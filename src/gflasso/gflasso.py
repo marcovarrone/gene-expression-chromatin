@@ -1,6 +1,26 @@
 import numpy as np
 import scipy.sparse as sps
 from sklearn.linear_model import MultiTaskLasso
+from data_generator import fake_dataset
+from sklearn.metrics import mean_absolute_error
+
+L1_REG = 0.01
+GAMMA = 0.01
+N_SAMPLES = 20000
+N_LANDMARKS = 500
+N_TARGETS = 1000
+
+X_train = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_X_tr_float64.npy')
+y_train = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_Y_tr_float64.npy')
+
+X_val = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_X_va_float64.npy')
+y_val = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_Y_va_float64.npy')
+
+X_train_small = X_train[:N_SAMPLES, :N_LANDMARKS]
+y_train_small = y_train[:N_SAMPLES, :N_TARGETS]
+
+X_val_small = X_val[:, :N_LANDMARKS]
+y_val_small = y_val[:, :N_TARGETS]
 
 
 def get_H(R):
@@ -27,8 +47,12 @@ def get_H(R):
 
 def get_Lu(X, C, l1_reg, gamma, mu):
     lambda_max = np.linalg.eigvals(X.T.dot(X))[0]
-    # ToDo: check this, different from paper
-    return lambda_max + (1 / mu) * (l1_reg ** 2 + 2 * gamma ** 2 * np.max(C.sum(axis=1)))
+
+    # Implementation from the R library
+    # return lambda_max + (1 / mu) * (l1_reg ** 2 + 2 * gamma ** 2 * np.max(C.sum(axis=1)))
+
+    # Implementation from the paper
+    return lambda_max + (np.linalg.norm(C) ** 2) / mu
 
 
 def get_optimal_alpha(C, W, mu):
@@ -40,9 +64,7 @@ def get_optimal_alpha(C, W, mu):
 
 def get_grad_f(X, Y, W, C, mu):
     alpha = get_optimal_alpha(C, W, mu)
-    factor1 = X.T.dot(X.dot(W) - Y)
-    factor2 = alpha.dot(C)
-    return factor1 + factor2
+    return X.T.dot(X.dot(W) - Y) + alpha.dot(C)
 
 
 # ToDo: understand
@@ -59,8 +81,11 @@ def get_B_next(W, grad_f, Lu, l1_reg):
     return soft_threshold(B, l1_reg / Lu)
 
 
-def objective(X, B, Y, C, l1_reg):
-    return (1 / 2) * np.sum((Y - X.dot(B)) ** 2) + l1_reg * np.sum(np.abs(B)) + np.sum(np.abs(B.dot(C.T)))
+def objective(X, B, Y, C, l1_reg) -> int:
+    error = np.sum((Y - X.dot(B)) ** 2) / 2
+    reg_1 = l1_reg * np.sum(np.abs(B))
+    reg_2 = np.sum(np.abs(B.dot(C.T)))
+    return error + reg_1 + reg_2
 
 
 def compute_gradient(X, Y, C, iter_max, mu, Lu, l1_reg, delta_conv, verbose=0, B=None):
@@ -75,7 +100,8 @@ def compute_gradient(X, Y, C, iter_max, mu, Lu, l1_reg, delta_conv, verbose=0, B
     W = np.copy(B)
 
     obj = np.zeros(iter_max)
-
+    # ToDo: something more elegant
+    mae = 100
     theta = 1
     for iter in range(iter_max):
         grad_f = get_grad_f(X, Y, W, C, mu)
@@ -87,7 +113,14 @@ def compute_gradient(X, Y, C, iter_max, mu, Lu, l1_reg, delta_conv, verbose=0, B
         B = B_next
         obj[iter] = objective(X, B, Y, C, l1_reg)
         if iter % 100 == 0:
-            print(obj[iter])
+            print('Iteration', iter, ": ", obj[iter])
+
+            mae_new = mean_absolute_error(y_val_small, X_val_small.dot(B))
+            if mae_new > mae:
+                break
+
+            mae = mae_new
+            print('Validation error:', mae)
         # ToDo: is the second condition useful?
         if (delta < delta_conv) or (iter > iter_max):
             break
@@ -95,16 +128,18 @@ def compute_gradient(X, Y, C, iter_max, mu, Lu, l1_reg, delta_conv, verbose=0, B
     return B, obj
 
 
-def gflasso_2010(X, Y, R, l1_reg=1, delta_conv=1e-2, eps=0.0005, gamma=1, iter_max=1e4, verbose=False):
+def gflasso_2010(X, Y, R, l1_reg=1.0, delta_conv=1e-2, eps=0.0005, gamma=1.0, iter_max=1e4, verbose=False):
     J = X.shape[1]  # input features
     K = Y.shape[1]  # output features
 
     # Get le penalty matrix
     C = gamma * get_H(R)
+
     E = C.shape[0]  # Number of edges
 
     # |E|/2 according to 2012 paper, 1/2 J(K + |E|) for the 2010 paper
     # D = J*(K + E) / 2
+    # ToDo: why C.shape[1] instead of C.shape[0], otherwise is J instead of |E|
     D = (1 / 2) * X.shape[1] * (Y.shape[1] + C.shape[1] / 2)
     mu = eps / (2 * D)
 
@@ -115,20 +150,26 @@ def gflasso_2010(X, Y, R, l1_reg=1, delta_conv=1e-2, eps=0.0005, gamma=1, iter_m
 
 
 if __name__ == '__main__':
-    '''X_train = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_X_tr_float64.npy')
-    y_train = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_Y_tr_float64.npy')
+    R = np.load('../data/correlation_y.npy')
 
-    X_val = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_X_va_float64.npy')
-    y_val = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_Y_va_float64.npy')'''
-    # X, y, R = fake_dataset()
-    # R[np.abs(R) < 0.8] = 0
-    # B, obj = gflasso_2010(X_train, y_train, R)
+    # model_lasso = MultiTaskLasso()
+    # print("Initialize Lasso")
+    # model_lasso.fit(X_train_small, y_train_small)
+    # print("Lasso fitted")
 
-'''def gflasso_2012(X, Y, R, l1_reg=1, delta_conv=1e-2, eps=0.0005, gamma=1, iter_max=1e3, verbose=False):
-    # Get le penalty matrix
-    C = gamma * get_H(R)
-    n_edges = C.shape[0]
+    # print('MAE Lasso: ', mean_absolute_error(y_val_small, model_lasso.predict(X_val_small)))
 
-    D = n_edges / 2
-    mu = eps / (2 * D)
-    lambda_max = np.linalg.eigvals(X.T.dot(X))[0]'''
+    R_small = np.copy(R[:N_TARGETS, :N_TARGETS])
+    R_small[R_small < 0.8] = 0
+    del R
+    # R_small[np.abs(R_small) < 0.8] = 0
+
+    maes = []
+    for l1_reg in [0.01, 0.05, 0.1]:
+        for gamma in [0.01, 0.05, 0.1]:
+            print('MAE GFlasso l1_reg=', l1_reg, ' gamma=', gamma)
+            coeffs, obj = gflasso_2010(X_train_small, y_train_small, R_small, l1_reg=l1_reg, gamma=gamma,
+                                       iter_max=1e3)
+            mae = mean_absolute_error(y_val_small, X_val_small.dot(coeffs))
+            print('MAE GFlasso l1_reg=', l1_reg, ' gamma=', gamma, mae)
+            maes.append(mae)

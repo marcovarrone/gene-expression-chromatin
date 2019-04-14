@@ -14,8 +14,9 @@ def get_bed_compatible_df(df):
     bed_df.columns = ['dgex_id', 'chrom', 'chromStart', 'chromEnd', 'strand']
 
     bed_df['strand'] = bed_df['strand'].astype('object')
-    coordinates = bed_df.replace({'strand': {-1: '-', 1: '+'}}, None)
-    return coordinates
+
+    bed_df = bed_df.replace({'strand': {-1: '-', 1: '+'}}, None)
+    return bed_df
 
 
 def extension(row, size):
@@ -57,35 +58,36 @@ def count_genes_interactions(interactions, bed, n_genes):
         if len(first_genes) > 0 and len(second_genes) > 0:
             for _, first_gene in first_genes.iterrows():
                 for _, second_gene in second_genes.iterrows():
-                    # if first_gene['strand'] == second_gene['strand']:
-                    gene_interactions[first_gene['dgex_id']][second_gene['dgex_id']] += 1
-                    #gene_interactions[second_gene['dgex_id']][first_gene['dgex_id']] += 1
+                    if first_gene['dgex_feature_filtered_id'] != second_gene['dgex_feature_filtered_id']:
+                        gene_interactions[first_gene['dgex_feature_filtered_id']][
+                            second_gene['dgex_feature_filtered_id']] += 1
+                        # gene_interactions[second_gene['dgex_id']][first_gene['dgex_id']] += 1
     return gene_interactions
 
 
-def compute_interactions(df, region_interactions, save=True):
+def compute_interactions(df, region_interactions, name, save=True):
     try:
-        return np.load('gene_interactions_HCT116_POLR2A.npy')
+        return np.load('gene_interactions_' + str(name) + '.npy')
     except FileNotFoundError:
 
         genes_coord = get_bed_compatible_df(df)
+        genes_coord['dgex_feature_filtered_id'] = np.arange(len(genes_coord), dtype=int)
 
         bed_w_promoter = extend_to_promoter(genes_coord, 1000)
-
-        genes_interactions = count_genes_interactions(region_interactions, bed_w_promoter, len(genes_coord))
-
+        genes_interactions = count_genes_interactions(region_interactions, bed_w_promoter,
+                                                      len(genes_coord))
         if save:
-            np.save('gene_interactions_HCT116_POLR2A.npy', genes_interactions)
+            np.save('gene_interactions_' + str(name) + '.npy', genes_interactions)
         return genes_interactions
 
 
-def compute_correlations(expression, save=True):
+def compute_correlations(expression, name, save=True):
     try:
-        return np.load('gene_correlations_dgex.npy')
+        return np.load('gene_correlations_' + str(name) + '.npy')
     except FileNotFoundError:
         gene_correlations = np.corrcoef(expression)
         if save:
-            np.save('gene_correlations_dgex.npy', gene_correlations)
+            np.save('gene_correlations_' + str(name) + '.npy', gene_correlations)
         return gene_correlations
 
 
@@ -96,29 +98,35 @@ def build_interaction_matrix(first_genes, second_genes, n_genes):
     return gene_interactions
 
 
-def plot_connected_distribution(gene_interactions, gene_correlations):
-    interaction_idxs = np.nonzero(gene_interactions)
+def plot_connected_distribution(gene_interactions, gene_correlations, interaction_idxs=None):
+    if interaction_idxs is None:
+        interaction_idxs = np.nonzero(gene_interactions)
 
     correlations_interacting = gene_correlations[interaction_idxs]
-    sns.distplot(correlations_interacting)
+    sns.distplot(correlations_interacting, label="connected")
     return correlations_interacting
 
 
-def plot_random_distribution(gene_interactions, gene_correlations):
-    n_interacting_gene_couples = np.count_nonzero(gene_interactions)
+def plot_random_distribution(gene_interactions, gene_correlations, n_interacting_gene_couples=None):
+    if n_interacting_gene_couples is None:
+        n_interacting_gene_couples = np.count_nonzero(gene_interactions)
+    print("N. of interacting couples: ", n_interacting_gene_couples)
     index_x, index_y = np.where(gene_interactions == 0)
-
     sampling_idxs = np.random.choice(np.arange(index_x.shape[0]), n_interacting_gene_couples, replace=False)
 
     correlations_non_interacting_sampled = gene_correlations[index_x[sampling_idxs], index_y[sampling_idxs]]
 
-    sns.distplot(correlations_non_interacting_sampled)
+    sns.distplot(correlations_non_interacting_sampled, label="random")
     return correlations_non_interacting_sampled
 
 
-def plot_distributions(gene_interactions, gene_correlations):
+def plot_distributions(gene_interactions, gene_correlations, name=None):
+    interaction_idxs = np.nonzero(gene_interactions)
     correlations_interacting = plot_connected_distribution(gene_interactions, gene_correlations)
     correlations_non_interacting_sampled = plot_random_distribution(gene_interactions, gene_correlations)
+    plt.legend()
+    if name:
+        plt.savefig(str(name)+'_ttest.png')
     plt.show()
     return correlations_interacting, correlations_non_interacting_sampled
 
@@ -152,25 +160,31 @@ def genemania(df, expression):
     corr_sample = gene_pairs_idxs.sample(__n_samples, replace=False)
     return corr_sample, len(gene_meta_filtered), gene_correlations
 
+
 def main():
     bin_length = 10000000
-    file_path = 'ENCSR000BZX_HCT116_POLR2A.bed'
+    file = 'CHM163M_L4'
+
+    file_path = '../../data/' + str(file) + '.bed'
     contact_matrix = ChiaPetInteractions(file_path, bin_length, different_chrs=False)
     from_genemania = False
 
-    gene_meta = pd.read_csv('/home/nanni/Projects/gexi-top/data/processed/dgex_genes_with_coords.tsv', sep='\t', header=0)
+    gene_meta = pd.read_csv('/home/nanni/Projects/gexi-top/data/processed/dgex_genes_with_coords.tsv', sep='\t',
+                            header=0)
     genexp = np.load('/home/nanni/Projects/gexi-top/data/processed/d-gex/bgedv2_GTEx_1000G_float64.npy')
 
     if from_genemania:
         gene_pairs_idxs, n_genes, gene_correlations = genemania(gene_meta, genexp)
-        gene_interactions = build_interaction_matrix(gene_pairs_idxs.Gene_A.values, gene_pairs_idxs.Gene_B.values, n_genes)
+        gene_interactions = build_interaction_matrix(gene_pairs_idxs.Gene_A.values, gene_pairs_idxs.Gene_B.values,
+                                                     n_genes)
     else:
-        gene_interactions = compute_interactions(gene_meta, contact_matrix.interactions)
-        expression = genexp[gene_meta['dgex_feature_id']]
-        gene_correlations = compute_correlations(expression)
+        gene_interactions = compute_interactions(gene_meta, contact_matrix.interactions, file)
+
+        genexp = genexp[gene_meta['dgex_feature_id']]
+        gene_correlations = compute_correlations(genexp, 'dgex')
 
     correlations_interacting, correlations_non_interacting_sampled = plot_distributions(gene_interactions,
-                                                                                        gene_correlations)
+                                                                                        gene_correlations, file)
 
     print(ttest_ind(correlations_interacting, correlations_non_interacting_sampled, equal_var=False))
 

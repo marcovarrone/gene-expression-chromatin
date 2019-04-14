@@ -11,7 +11,7 @@ from chiapet_to_sparse import ChiaPetInteractions
 
 def get_bed_compatible_df(df):
     bed_df = df[['dgex_feature_id', 'chr', 'start', 'end', 'strand']].copy()
-    bed_df.columns = ['dgex_id', 'chrom', 'chromStart', 'chromEnd', 'strand']
+    bed_df.columns = ['dgex_feature_id', 'chrom', 'chromStart', 'chromEnd', 'strand']
 
     bed_df['strand'] = bed_df['strand'].astype('object')
 
@@ -31,7 +31,6 @@ def extension(row, size):
 
 
 def extend_to_promoter(bed, size=1000):
-    pass
     # Requires file with chromosome size
     # bed.slop(l=size, s=True)
 
@@ -65,8 +64,10 @@ def count_genes_interactions(interactions, bed, n_genes):
     return gene_interactions
 
 
-def compute_interactions(df, region_interactions, name, save=True):
+def compute_interactions(df, region_interactions, name, load=False, save=True):
     try:
+        if not load:
+            raise FileNotFoundError
         return np.load('gene_interactions_' + str(name) + '.npy')
     except FileNotFoundError:
 
@@ -81,8 +82,10 @@ def compute_interactions(df, region_interactions, name, save=True):
         return genes_interactions
 
 
-def compute_correlations(expression, name, save=True):
+def compute_correlations(expression, name, load=False, save=True):
     try:
+        if not load:
+            raise FileNotFoundError
         return np.load('gene_correlations_' + str(name) + '.npy')
     except FileNotFoundError:
         gene_correlations = np.corrcoef(expression)
@@ -163,7 +166,7 @@ def genemania(df, expression):
 
 def main():
     bin_length = 10000000
-    file = 'CHM163M_L4'
+    file = 'ENCSR000BZX_HCT116_POLR2A'
 
     file_path = '../../data/' + str(file) + '.bed'
     contact_matrix = ChiaPetInteractions(file_path, bin_length, different_chrs=False)

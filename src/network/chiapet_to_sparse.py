@@ -25,14 +25,7 @@ class ChiaPetInteractions(object):
             self.chromosomes = chromosomes
 
         self.interactions = self.__bed2interactions(chromosomes, different_chrs)
-        self.bounds = self.__get_bounds()
-        self.interactions, self.offsets = self.__apply_offsets()
 
-        total_length = max(self.interactions['index2'])
-        n_bins = total_length // bin_length
-
-        print("Number of bins:", n_bins)
-        print("Number of interactions:", np.count_nonzero(self.interactions))
 
         self.heatmap = None
 
@@ -75,10 +68,15 @@ class ChiaPetInteractions(object):
             segment_2_split = segment_2_split[chromosomes_selection]
 
         bed['chrom1'] = chr_1
-        bed['index1'] = pd.to_numeric(segment_1_split[1].str.split('.').str[0])
+        coord_1 = segment_1_split[1].str.split('.')
+        middle_coordinate = (coord_1.str[0].astype(int) + coord_1.str[-1].astype(int))/2
+        bed['index1'] = middle_coordinate.astype('int')
+        #print(middle_coordinate.astype('int'))
 
         bed['chrom2'] = chr_2
-        bed['index2'] = pd.to_numeric(segment_2_split[1].str.split('.').str[-1])
+        coord_2 = segment_2_split[1].str.split('.')
+        middle_coordinate = (coord_2.str[0].astype(int)+ coord_2.str[-1].astype(int))/2
+        bed['index2'] = middle_coordinate.astype('int')
         return bed
 
     def __get_bounds(self):
@@ -114,6 +112,16 @@ class ChiaPetInteractions(object):
             offsets[chromosome] = total_offset
             total_offset += end_offset + 1
         return self.interactions, offsets
+
+    def align_interactions(self):
+        self.bounds = self.__get_bounds()
+        self.interactions, self.offsets = self.__apply_offsets()
+
+        total_length = max(self.interactions['index2'])
+        n_bins = total_length // self.bin_length
+
+        print("Number of bins:", n_bins)
+        print("Number of interactions:", np.count_nonzero(self.interactions))
 
     def generate_heatmap(self):
         end = max(self.interactions['index2'])

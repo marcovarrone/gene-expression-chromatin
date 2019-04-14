@@ -13,6 +13,7 @@ def main():
     file_path = 'ENCSR000BZX_HCT116_POLR2A.bed'
 
     contact_matrix = ChiaPetInteractions(file_path, bin_length, different_chrs=False)
+    contact_matrix.align_interactions()
     heatmap = contact_matrix.generate_heatmap()
     heatmap = contact_matrix.remove_top_outliers(heatmap=heatmap, ratio=0.005)
     G = build_graph(heatmap)

@@ -22,13 +22,14 @@ class MLP(keras.Sequential):
         self.learning_rate = learning_rate
         self.activation = activation
         self.loss = loss
+        self.batch_size = None
+        self.landmark_threshold = landmark_threshold
+        self.target_threshold = target_threshold
 
         self.target_reg = target_reg
         self.patience = patience
         self.checkpoint_every = checkpoint_every
         self.history = None
-
-        self.name = self._set_name(landmark_threshold, target_threshold)
 
         self.landmark_reg = None
         if landmark_reg is not None and landmark_graph is not None and landmark_threshold is not None:
@@ -62,6 +63,8 @@ class MLP(keras.Sequential):
             validation_data=None, shuffle=True, class_weight=None, sample_weight=None, initial_epoch=0,
             steps_per_epoch=None, validation_steps=None, **kwargs):
 
+        if callbacks is None:
+            callbacks = []
         if not isinstance(callbacks, list):
             callbacks = [callbacks]
 
@@ -70,7 +73,7 @@ class MLP(keras.Sequential):
             callbacks.append(es)
 
         if self.checkpoint_every > 0:
-            mc = ModelCheckpoint('weights/' + str(self.name) + '.h5',
+            mc = ModelCheckpoint('weights/' + str(self) + '.h5',
                                  save_weights_only=True, period=self.checkpoint_every)
             callbacks.append(mc)
 
@@ -88,21 +91,15 @@ class MLP(keras.Sequential):
     def _target_regularization(self, H, regularization, weight_matrix):
         return regularization * K.sum(K.abs(tf.sparse.sparse_dense_matmul(weight_matrix, H)))
 
-    def _set_name(self, lm_threshold, tgt_threshold):
+    def __repr__(self):
+        return super(MLP, self).__repr__()
+
+    def __str__(self):
         return 'mlp_l' + str(self.n_hidden) + \
                '_n' + str(self.hidden_size) + \
                '_bs' + str(self.batch_size) + \
                '_lr' + str(self.learning_rate) + \
                '_lreg' + str(self.landmark_reg) + \
-               '_lth' + str(lm_threshold) + \
+               '_lth' + str(self.landmark_threshold) + \
                '_treg' + str(self.target_reg) + \
-               '_tth' + str(tgt_threshold)
-
-    def __repr__(self):
-        return super(MLP, self).__repr__()
-
-
-if __name__ == '__main__':
-    mlp = MLP(10, 1000, 2, 200)
-    mlp.compile(optimizer=keras.optimizers.Adam(), )
-    print(mlp.summary())
+               '_tth' + str(self.target_threshold)

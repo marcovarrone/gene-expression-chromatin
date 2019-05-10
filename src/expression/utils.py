@@ -71,8 +71,14 @@ def join_source_genes(X, y, n_targets, idxs=None):
     return X_targets, y_targets
 
 
-def get_H(R, threshold):
+def get_H(R, threshold, implicit=True):
     R[R < threshold] = 0
+
+    if implicit:
+        R[R >= threshold] = 1
+
+    if isinstance(R, sps.csr_matrix):
+        R = R.eliminate_zeros()
     R = sps.coo_matrix(R)
 
     n_edges = R.nnz
@@ -96,14 +102,16 @@ def to_sparse_tensor(A):
     return tf.SparseTensor(indices=indices, values=A.data, dense_shape=A.shape)
 
 
-def delete_csr(mat, rows, axis):
+def delete_csr(mat, idxs, axis):
     if not isinstance(mat, sps.csr_matrix):
         raise ValueError("works only for CSR format -- use .tocsr() first")
 
-    if rows is None:
+    if idxs is None:
         return mat
 
     mask = np.ones(mat.shape[axis], dtype=bool)
-    mask[rows] = False
-    return mat[mask]
-
+    mask[idxs] = False
+    if axis == 0:
+        return mat[mask]
+    else:
+        return mat[:, mask]

@@ -28,6 +28,7 @@ class Autoencoder(object):
 
         self.learning_rate = learning_rate
         self.batch_size = None
+        self.epochs = None
         self.activation = activation
         self.regularizer = regularizer
         self.loss = loss
@@ -80,8 +81,7 @@ class Autoencoder(object):
             validation_data=None, shuffle=True, class_weight=None, sample_weight=None, initial_epoch=0,
             steps_per_epoch=None, validation_steps=None, force_train=False, **kwargs):
         self.batch_size = batch_size
-
-
+        self.epochs = epochs
 
         if os.path.isfile('models/' + str(self) + '_weights.h5') and not force_train:
             print("The model "+str(self)+" has already been trained. Loading from file")
@@ -111,6 +111,9 @@ class Autoencoder(object):
                        initial_epoch, steps_per_epoch, validation_steps, **kwargs)
 
         if self.save_model:
+            if validation_data:
+                print("Warning: saving a model which has not been trained on all the genes.")
+
             if os.path.isfile('models/' + str(self) + '_weights.h5'):
                 os.remove('models/' + str(self) + '_weights.h5')
             self.encoder.save_weights('models/' + str(self) + '_weights.h5')
@@ -131,8 +134,8 @@ class Autoencoder(object):
 
         for decoder in self.decoder_sizes:
             name += '_' + str(decoder)
-
-        name += '_lr' + str(self.learning_rate) + \
+        name += '_e' + str(self.epochs) + \
+                '_lr' + str(self.learning_rate) + \
                 '_bs' + str(self.batch_size)
         if self.dropout_in:
             name += '_dri' + str(self.dropout_in)

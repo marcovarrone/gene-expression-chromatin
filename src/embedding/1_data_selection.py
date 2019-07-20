@@ -16,8 +16,8 @@ parser = argparse.ArgumentParser()
 #ToDo: add description
 parser.add_argument('n_samples', type=int)
 parser.add_argument('--offset', type=int, nargs='?', default=0)
-parser.add_argument('--no-normalize', type=bool, nargs='?', default=True)
-parser.add_argument('--valid-size', type=float, nargs='?', default=0.2)
+parser.add_argument('--no-normalize', default=False, action='store_true')
+parser.add_argument('--valid-size', type=float, nargs='?', default=0)
 
 args = parser.parse_args()
 

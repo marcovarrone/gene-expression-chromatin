@@ -14,7 +14,7 @@ data_folder = config['EMBEDDING']['DATA']
 parser = argparse.ArgumentParser()
 
 #ToDo: add description
-parser.add_argument('n_samples', type=int)
+parser.add_argument('--n_samples', type=int, default=20000)
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--offset', type=int, nargs='?', default=0)
 parser.add_argument('--no-normalize', default=False, action='store_true')

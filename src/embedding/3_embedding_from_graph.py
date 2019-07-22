@@ -9,7 +9,7 @@ parser.add_argument('-data-repr', '--data-representation', type=str, default='20
 parser.add_argument('-emb-repr', '--embedding-representation', type=str, default='autoencoder_50_e120_lr0.0001_bs128_bn')
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--save-embedding', default=False, action='store_true')
-
+parser.add_argument('--random-seed', type=int, default=42)
 
 parser.add_argument('--threshold', type=float, default=0.0001)
 
@@ -27,6 +27,7 @@ import configparser
 import stellargraph as sg
 import scipy.sparse as sps
 import numpy as np
+import tensorflow as tf
 from stellargraph.data import EdgeSplitter
 from stellargraph.mapper import GraphSAGELinkGenerator, GraphSAGENodeGenerator
 from stellargraph.layer import GraphSAGE, link_classification
@@ -36,7 +37,8 @@ import keras
 config = configparser.ConfigParser()
 config.read('/home/varrone/config.ini')
 
-data_folder = config['EMBEDDING']['DATA']
+np.random.seed(args.random_seed)
+tf.set_random_seed(args.random_seed)
 
 adjacency = sps.load_npz(config['GRAPH']['GENEMANIA_NPZ']).todense()
 adjacency[adjacency < args.threshold] = 0

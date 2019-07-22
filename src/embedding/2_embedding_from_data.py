@@ -6,12 +6,12 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 parser = argparse.ArgumentParser()
 
 # ToDo: add description and parameters for training
-parser.add_argument('-data-repr', '--data-representation', type=str, required=True)
+parser.add_argument('-data-repr', '--data-representation', type=str, default='20000_0_normalized')
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--save-embedding', default=False, action='store_true')
+parser.add_argument('--random-seed', type=int, default=42)
 
 parser.add_argument('--gpu', default=False, action='store_true')
-
 parser.add_argument('--embedding-size', type=int, default=50)
 parser.add_argument('--learning-rate', type=float, default=0.0001)
 parser.add_argument('--no-batch-norm', default=False, action='store_true')
@@ -24,19 +24,19 @@ args = parser.parse_args()
 if not args.gpu:
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import numpy as np
-
+import tensorflow as tf
 from autoencoder import Autoencoder
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 config = configparser.ConfigParser()
 config.read('/home/varrone/config.ini')
 
-data_folder = config['EMBEDDING']['DATA']
+np.random.seed(args.random_seed)
+tf.set_random_seed(args.random_seed)
 
-print(args)
+data_folder = config['EMBEDDING']['DATA']
 
 X_train = np.load(
     str(data_folder) + '/' + str(args.dataset) + '/X_train_genes_' + str(args.data_representation) + '.npy')

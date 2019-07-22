@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser()
 
 #ToDo: add description
 parser.add_argument('n_samples', type=int)
+parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--offset', type=int, nargs='?', default=0)
 parser.add_argument('--no-normalize', default=False, action='store_true')
 parser.add_argument('--valid-size', type=float, nargs='?', default=0)
@@ -43,11 +44,11 @@ if args.valid_size:
     representation += '_'+str(args.valid_size)
 
     print('Saving training set with '+str(X_train.shape[0])+' genes and '+str(X_train.shape[1])+' samples')
-    np.save(str(data_folder)+'/GSE92743_X_train_genes' + str(representation), X_train)
+    np.save(str(data_folder)+'/'+str(args.dataset)+'/X_train_genes_' + str(representation), X_train)
 
     print('Saving validation set with '+str(X_valid.shape[0])+' genes and '+str(X_valid.shape[1])+' samples')
-    np.save(str(data_folder)+'/GSE92743_X_valid_genes' + str(representation), X_valid)
+    np.save(str(data_folder)+'/'+str(args.dataset)+'/X_valid_genes_' + str(representation), X_valid)
 else:
     print('Saving training set with size '+str(X.shape[0])+' genes and '+str(X.shape[1])+' samples')
-    np.save(str(data_folder)+'/GSE92743_X_train_genes'+str(representation), X)
+    np.save(str(data_folder)+'/'+str(args.dataset)+'/X_train_genes_'+str(representation), X)
 

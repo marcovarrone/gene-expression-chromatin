@@ -10,9 +10,12 @@ parser.add_argument('-emb-repr', '--embedding-representation', type=str, default
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--save-embedding', default=False, action='store_true')
 
-parser.add_argument('--gpu', default=False, action='store_true')
 
 parser.add_argument('--threshold', type=float, default=0.0001)
+
+parser.add_argument('--gpu', default=False, action='store_true')
+parser.add_argument('--save-model', default=False, action='store_true')
+
 
 args = parser.parse_args()
 
@@ -39,8 +42,6 @@ adjacency = sps.load_npz(config['GRAPH']['GENEMANIA_NPZ']).todense()
 adjacency[adjacency < args.threshold] = 0
 
 g_nx = nx.from_numpy_matrix(adjacency)
-
-X_train = np.load(str(data_folder) + '/' + str(args.dataset) + '/' + str(args.data_representation) + '.npy')
 
 node_features = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embedding_representation) + '.npy')
 
@@ -112,6 +113,12 @@ history = model.fit_generator(
     use_multiprocessing=True,
     workers=10,
 )
+
+'''if args.save_model:
+
+    if os.path.isfile('models/' + str(self) + '_weights.h5'):
+        os.remove('models/' + str(self) + '_weights.h5')
+    model.save_weights('models/' + str(self) + '_weights.h5')'''
 
 if args.save_embedding:
     x_inp_src = x_inp[0::2]

@@ -14,6 +14,9 @@ parser.add_argument('--random-seed', type=int, default=42)
 parser.add_argument('--threshold', type=float, default=0.0001)
 
 parser.add_argument('--gpu', default=False, action='store_true')
+parser.add_argument('--p-test', type=float, default=0.1)
+parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
+parser.add_argument('-e', '--epochs', type=int, default=15)
 parser.add_argument('--save-model', default=False, action='store_true')
 
 args = parser.parse_args()
@@ -47,16 +50,13 @@ g_nx = nx.from_numpy_matrix(adjacency)
 
 node_features = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embedding_representation) + '.npy')
 
-# ToDo: parameters from command line
-graphsage = GraphSAGELinkPredictor(graph=g_nx, node_features=node_features, p_test=0.1, learning_rate=1e-4, epochs=12,
-                                   save_model=args.save_model)
+graphsage = GraphSAGELinkPredictor(graph=g_nx, node_features=node_features, p_test=args.p_test,
+                                   learning_rate=args.learning_rate, epochs=args.epochs, save_model=args.save_model)
 graphsage.fit()
-
-# ToDo: fix embedding name saving
 
 if args.save_embedding:
     embeddings = graphsage.embeddings
-    print('Saving embedding in embeddings/' + str(args.data_representation) + '_' + str(
-        args.embedding_representation) + '_graphsage.npy')
-    np.save('embeddings/' + str(args.data_representation) + '_' + str(args.embedding_representation) + '_graphsage.npy',
-            embeddings)
+    print('Saving embedding in embeddings/' + str(graphsage) + '_' + str(args.embedding_representation) + '_' + str(
+        args.data_representation)+'.npy')
+    np.save('embeddings/' + str(graphsage) + '_' + str(args.embedding_representation) + '_' + str(
+        args.data_representation)+'.npy', embeddings)

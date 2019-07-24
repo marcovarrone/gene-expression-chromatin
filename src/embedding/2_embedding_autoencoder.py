@@ -19,6 +19,7 @@ parser.add_argument('--save-model', default=False, action='store_true')
 parser.add_argument('--batch-size', type=int, default=128)
 parser.add_argument('--epochs', type=int, default=120)
 parser.add_argument('--validate', default=False, action='store_true')
+parser.add_argument('--runs-folder', type=str, default=None)
 
 args = parser.parse_args()
 if not args.gpu:
@@ -29,6 +30,11 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import tensorflow as tf
 from autoencoder import Autoencoder
+
+config_tf = tf.compat.v1.ConfigProto(device_count={'GPU': 0, 'CPU': 10})
+config_tf.intra_op_parallelism_threads = 10
+config_tf.inter_op_parallelism_threads = 10
+tf.compat.v1.Session(config=config_tf)
 
 config = configparser.ConfigParser()
 config.read('/home/varrone/config.ini')
@@ -44,18 +50,21 @@ X_train = np.load(
 if args.validate:
     autoencoder = Autoencoder(X_train.shape[1], embedding_size=args.embedding_size,
                               learning_rate=args.learning_rate,
-                              batch_norm=(not args.no_batch_norm), run_folder=None, save_model=args.save_model)
+                              batch_norm=(not args.no_batch_norm), run_folder=args.run_folder,
+                              save_model=args.save_model)
     X_valid = np.load(
         str(data_folder) + '/' + str(args.dataset) + '/X_valid_genes' + str(args.data_representation) + '.npy')
     autoencoder.fit(X_train, batch_size=args.batch_size, epochs=args.epochs, validation_data=(X_valid, X_valid))
 else:
     autoencoder = Autoencoder(X_train.shape[1], embedding_size=args.embedding_size,
                               learning_rate=args.learning_rate,
-                              batch_norm=(not args.no_batch_norm), run_folder=None, save_model=args.save_model,
-                              patience=0)
+                              batch_norm=(not args.no_batch_norm), run_folder=args.run_folder,
+                              save_model=args.save_model, patience=0)
     autoencoder.fit(X_train, batch_size=args.batch_size, epochs=args.epochs)
 
 if args.save_embedding:
     embedding = autoencoder.encoder.predict(X_train, batch_size=128)
-    print('Saving embedding in embeddings/' + str(args.dataset) + '/' + str(autoencoder) + '.npy')
-    np.save('embeddings/' + str(args.dataset) + '/' + str(autoencoder) + '.npy', embedding)
+    print('Saving embedding in embeddings/' + str(args.dataset) + '/' + str(autoencoder) + '_' + str(
+        args.data_representation) + '.npy')
+    np.save('embeddings/' + str(args.dataset) + '/' + str(autoencoder) + '_' + str(args.data_representation) + '.npy',
+            embedding)

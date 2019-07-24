@@ -3,7 +3,7 @@ import configparser
 
 import numpy as np
 
-from plots import pca_plot, tsne_plot
+from plots import pca_plot
 
 config = configparser.ConfigParser()
 config.read('/home/varrone/config.ini')
@@ -13,8 +13,9 @@ data_folder = config['EMBEDDING']['DATA']
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
-parser.add_argument('embedding-representation')
+parser.add_argument('--embedding-representation', type=str, required=True)
 parser.add_argument('--dataset', type=str, default='GSE92743')
+parser.add_argument('--save-fig', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -24,10 +25,6 @@ if __name__ == '__main__':
     filename = None
 
     if args.save_fig:
-        filename = 'plots/' + str(args.technique) + '_' + str(args.data_representation) + '_'+ str(
-            args.embedding_representation)
+        filename = 'plots/pca_' + str(args.embedding_representation) + '.png'
 
-    if args.technique == 'pca':
-        pca_plot(embedding, filename_save=filename)
-    elif args.technique == 'tsne':
-        tsne_plot(embedding, filename_save=filename)
+    pca_plot(embedding, filename_save=filename)

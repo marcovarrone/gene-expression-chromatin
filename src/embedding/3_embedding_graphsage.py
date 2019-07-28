@@ -51,12 +51,13 @@ g_nx = nx.from_numpy_matrix(adjacency)
 node_features = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embedding_representation) + '.npy')
 
 graphsage = GraphSAGELinkPredictor(graph=g_nx, node_features=node_features, p_test=args.p_test,
-                                   learning_rate=args.learning_rate, epochs=args.epochs, save_model=args.save_model)
+                                   learning_rate=args.learning_rate, epochs=args.epochs, save_model=args.save_model,
+                                   embedding_representation=args.embedding_representation)
 graphsage.fit()
 
 if args.save_embedding:
     embeddings = graphsage.embeddings
-    print('Saving embedding in embeddings/' + str(graphsage) + '_' + str(args.embedding_representation) + '_' + str(
-        args.data_representation)+'.npy')
-    np.save('embeddings/' + str(graphsage) + '_' + str(args.embedding_representation) + '_' + str(
-        args.data_representation)+'.npy', embeddings)
+    print('Saving embedding in embeddings/' + str(graphsage) + '.npy')
+    np.save(
+        'embeddings/' + str(args.dataset) + '/' + str(graphsage) + '.npy',
+        embeddings, allow_pickle=False)

@@ -17,9 +17,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--embedding-representation', type=str, required=True)
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--save-fig', default=False, action='store_true')
-parser.add_argument('--perplexity', type=int, default=30)
-parser.add_argument('--landmarks', type=str, default='l1000')
+
 parser.add_argument('-k', '--n-clusters', type=int)
+parser.add_argument('--landmarks', type=str, default='l1000')
+
+# t-SNE
+parser.add_argument('--perplexity', type=int, default=30)
 args = parser.parse_args()
 
 if __name__ == '__main__':

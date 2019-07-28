@@ -1,8 +1,6 @@
 import argparse
 import configparser
 import os
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 parser = argparse.ArgumentParser()
 
 # ToDo: add description and parameters for training
@@ -19,7 +17,7 @@ parser.add_argument('--save-model', default=False, action='store_true')
 parser.add_argument('--batch-size', type=int, default=128)
 parser.add_argument('--epochs', type=int, default=120)
 parser.add_argument('--validate', default=False, action='store_true')
-parser.add_argument('--runs-folder', type=str, default=None)
+parser.add_argument('--run-folder', type=str, default=None)
 
 args = parser.parse_args()
 if not args.gpu:
@@ -45,7 +43,7 @@ tf.set_random_seed(args.random_seed)
 data_folder = config['EMBEDDING']['DATA']
 
 X_train = np.load(
-    str(data_folder) + '/' + str(args.dataset) + '/X_train_genes_' + str(args.data_representation) + '.npy')
+    str(data_folder) + '/' + str(args.dataset) + '/X_train_' + str(args.data_representation) + '.npy')
 
 if args.validate:
     autoencoder = Autoencoder(X_train.shape[1], embedding_size=args.embedding_size,
@@ -53,7 +51,7 @@ if args.validate:
                               batch_norm=(not args.no_batch_norm), run_folder=args.run_folder,
                               save_model=args.save_model)
     X_valid = np.load(
-        str(data_folder) + '/' + str(args.dataset) + '/X_valid_genes' + str(args.data_representation) + '.npy')
+        str(data_folder) + '/' + str(args.dataset) + '/X_valid_' + str(args.data_representation) + '.npy')
     autoencoder.fit(X_train, batch_size=args.batch_size, epochs=args.epochs, validation_data=(X_valid, X_valid))
 else:
     autoencoder = Autoencoder(X_train.shape[1], embedding_size=args.embedding_size,

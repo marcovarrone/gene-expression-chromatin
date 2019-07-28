@@ -1,5 +1,11 @@
 import argparse
 import configparser
+import os
+os.environ["OMP_NUM_THREADS"] = "10" # export OMP_NUM_THREADS=1
+os.environ["OPENBLAS_NUM_THREADS"] = "10" # export OPENBLAS_NUM_THREADS=1
+os.environ["MKL_NUM_THREADS"] = "10" # export MKL_NUM_THREADS=1
+os.environ["VECLIB_MAXIMUM_THREADS"] = "10" # export VECLIB_MAXIMUM_THREADS=1
+os.environ["NUMEXPR_NUM_THREADS"] = "10" # export NUMEXPR_NUM_THREADS=1
 
 import numpy as np
 from sklearn.decomposition import PCA
@@ -11,6 +17,8 @@ parser.add_argument('-data-repr', '--data-representation', type=str, default='')
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--save-embedding', default=False, action='store_true')
 parser.add_argument('--random-seed', type=int, default=42)
+
+# ToDo: implement save model
 parser.add_argument('--save-model', default=False, action='store_true')
 
 parser.add_argument('--explained-variance', type=float, default=0.9)
@@ -25,10 +33,13 @@ np.random.seed(args.random_seed)
 data_folder = config['EMBEDDING']['DATA']
 
 X_train = np.load(
-    str(data_folder) + '/' + str(args.dataset) + '/X_train_genes_' + str(args.data_representation) + '.npy')
+    str(data_folder) + '/' + str(args.dataset) + '/X_train_' + str(args.data_representation) + '.npy')
+
+print(X_train.shape)
 
 pca = PCA()
 embedding = pca.fit_transform(X_train)
+print(embedding.shape)
 
 if 1 > args.explained_variance > 0:
     variance_cum = np.cumsum(pca.explained_variance_ratio_)
@@ -37,7 +48,7 @@ if 1 > args.explained_variance > 0:
     print("Take", last_index, "components which explain", str(args.explained_variance*100)+'% of the variance')
     embedding = embedding[:, :last_index]
 
-pca_repr = 'pca_' + str(args.explained_variance)
+pca_repr = 'pca_' + str(args.explained_variance) + '_' + str(args.data_representation)
 
 if args.save_embedding:
     print('Saving embedding in embeddings/' + str(args.dataset) + '/' + str(pca_repr) + '.npy')

@@ -25,7 +25,9 @@ parser.add_argument('--save-variance', default=False, action='store_true')
 args = parser.parse_args()
 
 def compute_explained_variance(data, k_range):
-    wcss = [0]
+    print("Computing total sum of squares")
+    tss = sum(pdist(data) ** 2) / data.shape[0]
+    wcss = [tss]
     for k in k_range:
         print("Computing K-means for k =", k)
         kmean = KMeans(n_clusters=k, n_jobs=10).fit(data)
@@ -34,8 +36,6 @@ def compute_explained_variance(data, k_range):
         dist = np.min(k_euclid, axis=1)
         wcss.append(sum(dist ** 2))
 
-    print("Computing total sum of squares")
-    tss = sum(pdist(data) ** 2) / data.shape[0]
     bss = tss - wcss
     explained_variance = bss / tss
 
@@ -66,8 +66,6 @@ if __name__ == '__main__':
             args.min_low) + '_' + str(args.max_high) + '.npy'):
         explained_variance = np.load('elbow/' + str(args.dataset) + '/elbow_' + str(args.embedding_representation) + '_' + str(
             args.min_low) + '_' + str(args.max_high) + '.npy')
-        #ToDo: rerun properly
-        explained_variance = np.hstack(([0], explained_variance))
     else:
         explained_variance = compute_explained_variance(embedding, k_range)
 
@@ -80,7 +78,7 @@ if __name__ == '__main__':
 
     if args.save_fig:
         plt.savefig('elbow/' + str(args.dataset) + '/elbow_' + str(args.embedding_representation) + '_' + str(
-            args.min_low) + '_' + str(args.max_high) + '2.png')
+            args.min_low) + '_' + str(args.max_high) + '.png')
 
     # kmeans = [KMeans(i) for i in k_range]
 

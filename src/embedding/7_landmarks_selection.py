@@ -1,8 +1,4 @@
 import os
-
-os.environ["MKL_NUM_THREADS"] = "15"
-os.environ["NUMEXPR_NUM_THREADS"] = "15"
-os.environ["OMP_NUM_THREADS"] = "15"
 import numpy as np
 
 from sklearn.metrics import pairwise_distances_argmin_min
@@ -31,7 +27,7 @@ def clusters_centers(clusters, data):
 
 embeddings = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embedding_representation) + '.npy')
 if __name__ == '__main__':
-    kmeans = KMeans(n_clusters=args.n_clusters, n_jobs=10)
+    kmeans = KMeans(n_clusters=args.n_clusters, n_jobs=8)
     kmeans.fit_transform(embeddings)
 
     centers = kmeans.cluster_centers_

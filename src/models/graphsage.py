@@ -8,23 +8,25 @@ from stellargraph.data import EdgeSplitter
 from stellargraph.layer import GraphSAGE, link_classification
 from stellargraph.mapper import GraphSAGELinkGenerator, GraphSAGENodeGenerator
 
+from models.model import ModelNN
+
 config = configparser.ConfigParser()
 config.read('/home/varrone/config.ini')
 
 
 # ToDo: implement Tensorboard tracking
 
-class GraphSAGELinkPredictor(object):
+class GraphSAGELinkPredictor(ModelNN):
 
-    def __init__(self, graph, node_features, p_train=0.1, p_test=0.1, epochs=20, layer_sizes=None,
+    def __init__(self, graph, node_features, p_train=0.1, p_test=0.1, layer_sizes=None,
                  num_samples=None, dropout=0.3, optimizer=keras.optimizers.Adam, learning_rate=1e-4,
-                 loss=keras.losses.binary_crossentropy, metric="acc", save_model=False, run_folder=None,
-                 embedding_representation=''):
+                 loss=keras.losses.binary_crossentropy, metric="acc", activation="relu",
+                 edge_embedding_method="hadamard", batch_size=10, patience=10, checkpoint_every=0, save_model=False,
+                 run_folder=None, embedding_representation=''):
         self.graph = graph
         self.node_features = node_features
         self.p_train = p_train
         self.p_test = p_test
-        self.epochs = epochs
         if layer_sizes is None:
             layer_sizes = [50, 50]
         self.layer_sizes = layer_sizes
@@ -44,10 +46,18 @@ class GraphSAGELinkPredictor(object):
         for n in self.graph:
             self.graph.nodes[n]['feature'] = node_features[n]
 
+        self.embeddings = None
+        self.batch_size = batch_size
+        self.edge_embedding_method = edge_embedding_method
+
+        self._setup_graph(p_test, activation, batch_size)
+        super().__init__(patience, checkpoint_every, save_model, run_folder)
+
+    def _setup_graph(self, p_test, activation, batch_size):
         self.G = sg.StellarGraph(self.graph, node_features='feature')
 
-        # Randomly sample a fraction p=0.1 of all positive links, and same number of negative links, from G, and obtain the
-        # reduced graph G_test with the sampled links removed:
+        # Randomly sample a fraction p=0.1 of all positive links, and same number of negative links, from G,
+        # obtain the reduced graph G_test with the sampled links removed:
         if p_test > 0:
             # Define an edge splitter on the original graph G:
             edge_splitter_test = EdgeSplitter(self.graph)
@@ -62,76 +72,71 @@ class GraphSAGELinkPredictor(object):
         else:
             edge_splitter_train = EdgeSplitter(self.graph)
 
-        # Randomly sample a fraction p=0.1 of all positive links, and same number of negative links, from G_test, and obtain the
-        # reduced graph G_train with the sampled links removed:
+        # Randomly sample a fraction p=0.1 of all positive links, and same number of negative links, from G_test,
+        # obtain the reduced graph G_train with the sampled links removed:
         G_train, self.edge_ids_train, self.edge_labels_train = edge_splitter_train.train_test_split(
             p=self.p_train, method="global", keep_connected=True
         )
 
         self.G_train = sg.StellarGraph(G_train, node_features="feature")
 
-        self.embeddings = None
-        self.batch_size = None
-        self.edge_embedding_method = None
-
-    def fit(self, activation="relu", edge_embedding_method="hadamard", batch_size=10, verbose=1,
-            use_multiprocessing=True, workers=10, force_train=False):
-
-        self.batch_size = batch_size
-        self.edge_embedding_method = edge_embedding_method
-
-        train_gen = GraphSAGELinkGenerator(self.G_train, batch_size, self.num_samples).flow(
+        self.train_gen = GraphSAGELinkGenerator(self.G_train, batch_size, self.num_samples).flow(
             self.edge_ids_train, self.edge_labels_train, shuffle=True
         )
         if self.p_test > 0:
-            test_gen = GraphSAGELinkGenerator(self.G_test, batch_size, self.num_samples).flow(
+            self.test_gen = GraphSAGELinkGenerator(self.G_test, batch_size, self.num_samples).flow(
                 self.edge_ids_test, self.edge_labels_test
             )
         else:
-            test_gen = None
+            self.test_gen = None
 
         graphsage = GraphSAGE(
-            layer_sizes=self.layer_sizes, generator=train_gen, bias=True, dropout=self.dropout
+            layer_sizes=self.layer_sizes, generator=self.train_gen, bias=True, dropout=self.dropout
         )
 
-        x_inp, x_out = graphsage.build()
+        self.x_inp, self.x_out = graphsage.build()
 
-        prediction = link_classification(
+        self.prediction = link_classification(
             output_dim=1, output_act=activation, edge_embedding_method=self.edge_embedding_method
-        )(x_out)
+        )(self.x_out)
 
-        self.model = keras.Model(inputs=x_inp, outputs=prediction)
+    def _build_model(self):
 
-        self.model.compile(
+        model = keras.Model(inputs=self.x_inp, outputs=self.prediction)
+
+        model.compile(
             optimizer=self.optimizer(lr=self.learning_rate),
             loss=self.loss,
             metrics=[self.metric],
         )
 
-        if os.path.isfile('models/' + str(self) + '_weights.h5') and not force_train:
-            print("The model " + str(self) + " has already been trained. Loading from file")
-            self.model.load_weights('models/' + str(self) + '_weights.h5')
-            return
-        else:
+        self.output_model = model
+        return model
+
+    def fit(self, epochs=15, callbacks=None, verbose=1,
+            use_multiprocessing=True, workers=10, force_train=False):
+        self.epochs = epochs
+
+        if force_train or not self._load_model():
+            print("Start training of model " + str(self))
+            callbacks = self._add_callbacks(callbacks)
+
             self.model.fit_generator(
-                train_gen,
-                epochs=self.epochs,
-                validation_data=test_gen,
+                self.train_gen,
+                callbacks=callbacks,
+                epochs=epochs,
+                validation_data=self.test_gen,
                 verbose=verbose,
                 use_multiprocessing=use_multiprocessing,
                 workers=workers,
             )
 
-        self.embeddings = self._generate_embedding(x_inp, x_out)
+            if self.save_model:
+                self._save_model(self.test_gen)
 
-        if self.save_model:
-            if self.p_test > 0:
-                print("Warning: saving a model which has not been trained on all the genes.")
+        self.embeddings = self._generate_embedding(self.x_inp, self.x_out)
 
-            if os.path.isfile('models/' + str(self) + '_weights.h5'):
-                os.remove('models/' + str(self) + '_weights.h5')
-            self.model.save_weights('models/' + str(self) + '_weights.h5')
-        return self
+
 
     def _generate_embedding(self, x_inp, x_out):
         x_inp_src = x_inp[0::2]

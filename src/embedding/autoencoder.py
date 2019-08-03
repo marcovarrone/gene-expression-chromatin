@@ -1,5 +1,8 @@
 import os
 
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 import keras
 import tensorflow as tf
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -8,13 +11,15 @@ from keras.models import Model
 from tensorflow.python.keras.callbacks import TensorBoard
 
 
+# ToDo: optimize GPU memory usage
+
 class Autoencoder(object):
 
     def __init__(self, in_dim, embedding_size, encoder_sizes=None, decoder_sizes=None, learning_rate=0.001,
                  activation=tf.nn.relu, regularizer=None, loss=keras.metrics.mean_squared_error,
                  optimizer=keras.optimizers.Adam, batch_norm=False, dropout_in=0.0, dropout=0.0, max_norm=None,
                  initializer='glorot_uniform', patience=10, checkpoint_every=0, save_model=False, run_folder=None,
-                 offset=0):
+                 data_representation=''):
         super().__init__()
         self.in_dim = in_dim
         self.embedding_size = embedding_size
@@ -42,7 +47,7 @@ class Autoencoder(object):
         self.checkpoint_every = checkpoint_every
         self.save_model = save_model
         self.run_folder = run_folder
-        self.offset = offset
+        self.data_repr = data_representation
 
         self.history = None
         self.encoder = None
@@ -63,7 +68,7 @@ class Autoencoder(object):
 
         x = Dense(units=self.embedding_size, activation=self.activation, kernel_initializer=self.initializer,
                   kernel_regularizer=self.regularizer, bias_regularizer=self.regularizer)(x)
-        #x = Dropout(self.dropout)(x)
+        # x = Dropout(self.dropout)(x)
 
         self.encoder = Model(inputs=input_data, outputs=x)
 
@@ -82,12 +87,11 @@ class Autoencoder(object):
             steps_per_epoch=None, validation_steps=None, force_train=False, **kwargs):
         self.batch_size = batch_size
         self.epochs = epochs
-
         if os.path.isfile('models/' + str(self) + '_weights.h5') and not force_train:
-            print("The model "+str(self)+" has already been trained. Loading from file")
+            print("The model " + str(self) + " has already been trained. Loading from file")
             self.encoder.load_weights('models/' + str(self) + '_weights.h5')
             return
-        print("Start training of model "+str(self))
+        print("Start training of model " + str(self))
         if callbacks is None:
             callbacks = []
         if not isinstance(callbacks, list):
@@ -150,6 +154,5 @@ class Autoencoder(object):
             name += '_' + str(self.initializer)
         if self.batch_norm:
             name += '_bn'
-        if self.offset:
-            name += '_o' + str(self.offset)
+        name += '_' + str(self.data_repr)
         return name

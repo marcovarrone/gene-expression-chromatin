@@ -3,18 +3,18 @@ from functools import partial
 import keras
 import tensorflow as tf
 from keras import backend as K
-from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.layers import Dense
 
+from models.model import ModelNN
 from utils import get_H, to_sparse_tensor
 
 
-class MLP(object):
+class MLP(ModelNN):
     def __init__(self, in_dim, out_dim, n_hidden, hidden_size, learning_rate=0.001, activation=tf.nn.relu,
                  loss=keras.metrics.mean_absolute_error, landmark_reg=None, landmark_graph=None,
-                 landmark_threshold=None, target_reg=None, target_graph=None, target_threshold=None, patience=5,
-                 checkpoint_every=0):
-        super(MLP, self).__init__()
+                 landmark_threshold=None, target_reg=None, target_graph=None, target_threshold=None, patience=10,
+                 checkpoint_every=0, save_model=False, run_folder=None):
+
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.n_hidden = n_hidden
@@ -41,7 +41,7 @@ class MLP(object):
             H = to_sparse_tensor(get_H(target_graph, target_threshold))
             self.target_reg = partial(self._target_regularization, H, target_reg)
 
-        self.net = self._build_model()
+        super().__init__(patience, checkpoint_every, save_model, run_folder)
 
     def _build_model(self):
         model = keras.Sequential()
@@ -54,39 +54,29 @@ class MLP(object):
 
         optimizer = keras.optimizers.Adam(lr=self.learning_rate)
         model.compile(loss=self.loss, optimizer=optimizer, metrics=[self.loss])
+
+        self.output_model = model
         return model
 
     def call(self, inputs):
-        return self.net(inputs)
+        return self.model(inputs)
 
     def fit(self, x=None, y=None, batch_size=128, epochs=100, verbose=1, callbacks=None, validation_split=0.,
             validation_data=None, shuffle=True, class_weight=None, sample_weight=None, initial_epoch=0,
-            steps_per_epoch=None, validation_steps=None, **kwargs):
+            steps_per_epoch=None, validation_steps=None, force_train=False, **kwargs):
 
-        if callbacks is None:
-            callbacks = []
-        if not isinstance(callbacks, list):
-            callbacks = [callbacks]
+        if not force_train and self._load_model():
+            return
 
-        if self.patience > 0:
-            es = EarlyStopping(monitor='val_loss', verbose=1, patience=self.patience, restore_best_weights=True)
-            callbacks.append(es)
+        print("Start training of model " + str(self))
+        callbacks = self._add_callbacks(callbacks)
 
-        if self.checkpoint_every > 0:
-            mc = ModelCheckpoint('weights/' + str(self) + '.h5',
-                                 save_weights_only=True, period=self.checkpoint_every)
-            callbacks.append(mc)
+        self.history = self.model.fit(x, y, batch_size, epochs, verbose, callbacks, validation_split, validation_data,
+                                      shuffle, class_weight, sample_weight, initial_epoch, steps_per_epoch,
+                                      validation_steps, **kwargs)
 
-        self.history = self.net.fit(x, y, batch_size, epochs, verbose, callbacks, validation_split, validation_data,
-                                    shuffle, class_weight, sample_weight, initial_epoch, steps_per_epoch,
-                                    validation_steps, **kwargs)
-
-    def evaluate(self, x=None, y=None, batch_size=None, verbose=1, sample_weight=None, steps=None):
-        loss, error = self.net.evaluate(x, y, batch_size, verbose, sample_weight, steps)
-        return error
-
-    def predict(self, x, batch_size=128, verbose=1):
-        return self.net.predict(x, batch_size=batch_size, verbose=verbose)
+        if self.save_model:
+            self._save_model(validation_data)
 
     def _landmark_regularization(self, H, regularization, weight_matrix):
         return regularization * K.sum(K.abs(tf.sparse.sparse_dense_matmul(H, weight_matrix)))

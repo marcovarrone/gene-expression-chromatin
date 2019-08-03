@@ -18,7 +18,8 @@ class GraphSAGELinkPredictor(object):
 
     def __init__(self, graph, node_features, p_train=0.1, p_test=0.1, epochs=20, layer_sizes=None,
                  num_samples=None, dropout=0.3, optimizer=keras.optimizers.Adam, learning_rate=1e-4,
-                 loss=keras.losses.binary_crossentropy, metric="acc", save_model=False, run_folder=None):
+                 loss=keras.losses.binary_crossentropy, metric="acc", save_model=False, run_folder=None,
+                 embedding_representation=''):
         self.graph = graph
         self.node_features = node_features
         self.p_train = p_train
@@ -38,6 +39,7 @@ class GraphSAGELinkPredictor(object):
         self.loss = loss
         self.metric = metric
         self.save_model = save_model
+        self.emb_repr = embedding_representation
 
         for n in self.graph:
             self.graph.nodes[n]['feature'] = node_features[n]
@@ -73,7 +75,7 @@ class GraphSAGELinkPredictor(object):
         self.edge_embedding_method = None
 
     def fit(self, activation="relu", edge_embedding_method="hadamard", batch_size=10, verbose=1,
-            use_multiprocessing=True, workers=10):
+            use_multiprocessing=True, workers=10, force_train=False):
 
         self.batch_size = batch_size
         self.edge_embedding_method = edge_embedding_method
@@ -106,14 +108,19 @@ class GraphSAGELinkPredictor(object):
             metrics=[self.metric],
         )
 
-        self.model.fit_generator(
-            train_gen,
-            epochs=self.epochs,
-            validation_data=test_gen,
-            verbose=verbose,
-            use_multiprocessing=use_multiprocessing,
-            workers=workers,
-        )
+        if os.path.isfile('models/' + str(self) + '_weights.h5') and not force_train:
+            print("The model " + str(self) + " has already been trained. Loading from file")
+            self.model.load_weights('models/' + str(self) + '_weights.h5')
+            return
+        else:
+            self.model.fit_generator(
+                train_gen,
+                epochs=self.epochs,
+                validation_data=test_gen,
+                verbose=verbose,
+                use_multiprocessing=use_multiprocessing,
+                workers=workers,
+            )
 
         self.embeddings = self._generate_embedding(x_inp, x_out)
 
@@ -160,5 +167,6 @@ class GraphSAGELinkPredictor(object):
         name += '_d' + str(self.dropout)
         name += '_lr' + str(self.learning_rate)
         name += '_bs' + str(self.batch_size)
-        name += self.edge_embedding_method
+        name += '_' + str(self.edge_embedding_method)
+        name += '_' + str(self.emb_repr)
         return name

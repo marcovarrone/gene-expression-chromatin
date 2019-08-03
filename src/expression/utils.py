@@ -84,10 +84,10 @@ def get_H(R, threshold, implicit=True):
     n_edges = R.nnz
     i = np.arange(n_edges)
 
-    data_order = R.data.argsort()
-    row = R.row[data_order]
-    col = R.col[data_order]
-    data = R.data[data_order]
+    #data_order = R.data.argsort()
+    row = R.row#[data_order]
+    col = R.col#[data_order]
+    data = R.data#[data_order]
 
     H = np.zeros((n_edges, R.shape[0]), dtype=np.float32)
     H[i, row] = np.abs(data)

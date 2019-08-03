@@ -4,8 +4,7 @@ import os
 import networkx as nx
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-data-repr', '--data-representation', type=str, default='20000_0_normalized')
-parser.add_argument('-emb-repr', '--embedding-representation', type=str,
+parser.add_argument('-e', '--embedding-representation', type=str,
                     default='autoencoder_50_e50_lr0.0001_bs128_bn_20000_0_normalized')
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--save-embedding', default=False, action='store_true')
@@ -16,7 +15,7 @@ parser.add_argument('--threshold', type=float, default=0.0001)
 parser.add_argument('--gpu', default=False, action='store_true')
 parser.add_argument('--p-test', type=float, default=0.1)
 parser.add_argument('-lr', '--learning-rate', type=float, default=1e-4)
-parser.add_argument('-e', '--epochs', type=int, default=15)
+parser.add_argument('--epochs', type=int, default=15)
 parser.add_argument('--save-model', default=False, action='store_true')
 
 args = parser.parse_args()

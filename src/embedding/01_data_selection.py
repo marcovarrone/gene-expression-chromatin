@@ -15,16 +15,16 @@ data_folder = config['EMBEDDING']['DATA']
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
-parser.add_argument('--n-samples', type=int)
-parser.add_argument('--dataset', type=str, default='GSE92743')
-parser.add_argument('--offset', type=int, nargs='?', default=0)
+parser.add_argument('-n', '--n-samples', type=int)
+parser.add_argument('-d', '--dataset', type=str, default='GSE92743')
+parser.add_argument('-o', '--offset', type=int, nargs='?', default=0)
 parser.add_argument('--no-normalize', default=False, action='store_true')
-parser.add_argument('--valid-size', type=float, nargs='?', default=0)
+parser.add_argument('-v', '--valid-size', type=float, nargs='?', default=0)
 parser.add_argument('--split-genes', default=False, action='store_true')
-
-np.random.seed(42)
+parser.add_argument('--seed', type=int, default=42)
 
 args = parser.parse_args()
+np.random.seed(args.seed)
 
 X = np.hstack((X_train, Y_train))
 np.random.shuffle(X)
@@ -55,10 +55,12 @@ if args.valid_size:
     print('Assigning ' + str(args.valid_size * 100) + '% of ' + (
         'genes' if args.split_genes else 'samples') + ' to validation set')
 
+    shuffle = True
     if not args.split_genes:
         # (n_samples, n_genes)
         X = X.T
-    X_train, X_valid = train_test_split(X, test_size=args.valid_size)
+        shuffle = False
+    X_train, X_valid = train_test_split(X, test_size=args.valid_size, shuffle=shuffle)
     if not args.split_genes:
         # (n_genes, n_samples)
         X_train, X_valid = X_train.T, X_valid.T

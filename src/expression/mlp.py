@@ -9,12 +9,12 @@ from keras.layers import Dense
 from utils import get_H, to_sparse_tensor
 
 
-class MLP(keras.Sequential):
+class MLP(object):
     def __init__(self, in_dim, out_dim, n_hidden, hidden_size, learning_rate=0.001, activation=tf.nn.relu,
                  loss=keras.metrics.mean_absolute_error, landmark_reg=None, landmark_graph=None,
                  landmark_threshold=None, target_reg=None, target_graph=None, target_threshold=None, patience=5,
                  checkpoint_every=0):
-        super(MLP, self).__init__(name='mlp')
+        super(MLP, self).__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.n_hidden = n_hidden
@@ -56,10 +56,10 @@ class MLP(keras.Sequential):
         model.compile(loss=self.loss, optimizer=optimizer, metrics=[self.loss])
         return model
 
-    def call(self, inputs, mask=None):
+    def call(self, inputs):
         return self.net(inputs)
 
-    def fit(self, x=None, y=None, batch_size=None, epochs=1, verbose=1, callbacks=None, validation_split=0.,
+    def fit(self, x=None, y=None, batch_size=128, epochs=100, verbose=1, callbacks=None, validation_split=0.,
             validation_data=None, shuffle=True, class_weight=None, sample_weight=None, initial_epoch=0,
             steps_per_epoch=None, validation_steps=None, **kwargs):
 
@@ -84,6 +84,9 @@ class MLP(keras.Sequential):
     def evaluate(self, x=None, y=None, batch_size=None, verbose=1, sample_weight=None, steps=None):
         loss, error = self.net.evaluate(x, y, batch_size, verbose, sample_weight, steps)
         return error
+
+    def predict(self, x, batch_size=128, verbose=1):
+        return self.net.predict(x, batch_size=batch_size, verbose=verbose)
 
     def _landmark_regularization(self, H, regularization, weight_matrix):
         return regularization * K.sum(K.abs(tf.sparse.sparse_dense_matmul(H, weight_matrix)))

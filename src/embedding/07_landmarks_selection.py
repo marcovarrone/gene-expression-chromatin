@@ -1,15 +1,13 @@
-import os
-import numpy as np
-
-from sklearn.metrics import pairwise_distances_argmin_min
-from sklearn.cluster import KMeans
-
 import argparse
+
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin_min
 
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
-parser.add_argument('--embedding-representation', type=str, required=True)
+parser.add_argument('-e', '--embeddings', type=str, required=True)
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('-k', '--n-clusters', type=int, required=True)
 parser.add_argument('--save-landmarks', default=False, action='store_true')
@@ -25,7 +23,7 @@ def clusters_centers(clusters, data):
     return np.array(centroids)
 
 
-embeddings = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embedding_representation) + '.npy')
+embeddings = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embeddings) + '.npy')
 if __name__ == '__main__':
     kmeans = KMeans(n_clusters=args.n_clusters, n_jobs=8)
     kmeans.fit_transform(embeddings)
@@ -34,5 +32,5 @@ if __name__ == '__main__':
 
     landmarks, _ = pairwise_distances_argmin_min(centers, embeddings)
     if args.save_landmarks:
-        np.save('landmarks/' + str(args.dataset) + '/' + str(args.embedding_representation) + '_k' + str(args.n_clusters) + '.npy',
+        np.save('landmarks/' + str(args.dataset) + '/' + str(args.embeddings) + '_k' + str(args.n_clusters) + '.npy',
                 landmarks)

@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 parser = argparse.ArgumentParser()
 
 # ToDo: add description and parameters for training
-parser.add_argument('-d', '--data-representation', type=str)
+parser.add_argument('-d', '--data', type=str)
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('-se', '--save-embedding', default=False, action='store_true')
 parser.add_argument('-sm', '--save-model', default=False, action='store_true')

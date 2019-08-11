@@ -9,8 +9,7 @@ from sklearn.cluster import KMeans
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--embedding-representation', type=str, required=True,
-                    default='autoencoder_50_e50_lr0.0001_bs128_bn_20000_0_normalized')
+parser.add_argument('-e', '--embeddings', type=str, required=True)
 parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('--data-path', type=str)
 parser.add_argument('--min-low', type=int, default=10)
@@ -55,16 +54,15 @@ if __name__ == '__main__':
     if args.data_path:
         embedding = np.load(args.data_path)
     else:
-        embedding = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embedding_representation) + '.npy')
+        embedding = np.load('embeddings/' + str(args.dataset) + '/' + str(args.embeddings) + '.npy')
 
     k_range_low = np.arange(args.min_low, args.max_low, args.step_low)
-    # k_range_high = np.arange(100, 1000, 200)
     k_range_high = np.arange(args.min_high, args.max_high, args.step_high)
     k_range = np.hstack((k_range_low, k_range_high))
 
-    if os.path.isfile('elbow/' + str(args.dataset) + '/elbow_' + str(args.embedding_representation) + '_' + str(
+    if os.path.isfile('elbow/' + str(args.dataset) + '/elbow_' + str(args.embeddings) + '_' + str(
             args.min_low) + '_' + str(args.max_high) + '.npy'):
-        explained_variance = np.load('elbow/' + str(args.dataset) + '/elbow_' + str(args.embedding_representation) + '_' + str(
+        explained_variance = np.load('elbow/' + str(args.dataset) + '/elbow_' + str(args.embeddings) + '_' + str(
             args.min_low) + '_' + str(args.max_high) + '.npy')
     else:
         explained_variance = compute_explained_variance(embedding, k_range)
@@ -72,12 +70,12 @@ if __name__ == '__main__':
     plot_elbow(explained_variance, k_range)
 
     if args.save_variance:
-        np.save('elbow/' + str(args.dataset) + '/elbow_' + str(args.embedding_representation) + '_' + str(
+        np.save('elbow/' + str(args.dataset) + '/elbow_' + str(args.embeddings) + '_' + str(
             args.min_low) + '_' + str(args.max_high) + '.npy',
                 explained_variance)
 
     if args.save_fig:
-        plt.savefig('elbow/' + str(args.dataset) + '/elbow_' + str(args.embedding_representation) + '_' + str(
+        plt.savefig('elbow/' + str(args.dataset) + '/elbow_' + str(args.embeddings) + '_' + str(
             args.min_low) + '_' + str(args.max_high) + '.png')
 
     # kmeans = [KMeans(i) for i in k_range]

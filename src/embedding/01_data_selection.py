@@ -8,15 +8,14 @@ from sklearn.preprocessing import StandardScaler
 config = configparser.ConfigParser()
 config.read('/home/varrone/config.ini')
 
-X_train = np.load(config['GSE_UNSCALED']['X_TRAIN'])
-Y_train = np.load(config['GSE_UNSCALED']['Y_TRAIN'])
+
 data_folder = config['EMBEDDING']['DATA']
 
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
 parser.add_argument('-n', '--n-samples', type=int)
-parser.add_argument('-d', '--dataset', type=str, default='GSE92743')
+parser.add_argument('-d', '--dataset', type=str, required=True)
 parser.add_argument('-o', '--offset', type=int, nargs='?', default=0)
 parser.add_argument('--no-normalize', default=False, action='store_true')
 parser.add_argument('-v', '--valid-size', type=float, nargs='?', default=0)
@@ -26,7 +25,13 @@ parser.add_argument('--seed', type=int, default=42)
 args = parser.parse_args()
 np.random.seed(args.seed)
 
-X = np.hstack((X_train, Y_train))
+if args.dataset == 'GSE92743':
+    X_train = np.load(config['GSE_UNSCALED']['X_TRAIN'])
+    Y_train = np.load(config['GSE_UNSCALED']['Y_TRAIN'])
+    X = np.hstack((X_train, Y_train))
+else:
+    X = np.load(config[args.dataset]['X'])
+
 np.random.shuffle(X)
 
 representation = ''

@@ -13,8 +13,8 @@ from sklearn.decomposition import PCA
 parser = argparse.ArgumentParser()
 
 # ToDo: add description and parameters for training
-parser.add_argument('-d', '--data-representation', type=str, default='')
-parser.add_argument('--dataset', type=str, default='GSE92743')
+parser.add_argument('-d', '--data', type=str, default='')
+parser.add_argument('--dataset', type=str, required=True)
 parser.add_argument('-se', '--save-embedding', default=False, action='store_true')
 parser.add_argument('--random-seed', type=int, default=42)
 
@@ -32,9 +32,9 @@ np.random.seed(args.random_seed)
 
 data_folder = config['EMBEDDING']['DATA']
 
-X_train = np.load('data/' + str(args.dataset) + '/' + str(args.data_representation) + '.npy')
+X_train = np.load('data/' + str(args.dataset) + '/' + str(args.data) + '.npy')
 
-data_repr = args.data_representation.replace('X_train_', '').replace('X_valid_', '')
+data_repr = args.data.replace('X_train_', '').replace('X_valid_', '')
 
 pca = PCA()
 embedding = pca.fit_transform(X_train)

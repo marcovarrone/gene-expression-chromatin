@@ -4,14 +4,14 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 
-from mlp import MLP
+from models.mlp import MLP
 
 def normalize(X):
     scaler = StandardScaler()
     return scaler.fit_transform(X)
 
 parser = argparse.ArgumentParser()
-
+parser.add_argument('--dataset', type=str, default='GSE92743')
 parser.add_argument('-tr', '--training-set', type=str)
 parser.add_argument('-v', '--validation-set', type=str)
 parser.add_argument('-te', '--test-set', type=str)
@@ -19,9 +19,6 @@ parser.add_argument('-l', '--landmarks', type=str, default='l1000')
 parser.add_argument('-r', '--random-landmarks', type=int)
 parser.add_argument('-n', '--n-iter', type=int, default=1)
 parser.add_argument('-m', '--model', type=str, default='lr')
-
-parser.add_argument('--dataset', type=str, default='GSE92743')
-
 args = parser.parse_args()
 
 train = np.load('data/' + str(args.dataset) + '/' + str(args.training_set) + '.npy').T

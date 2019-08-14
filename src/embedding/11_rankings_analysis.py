@@ -43,9 +43,8 @@ if args.plot_rankings:
     ranks_fast = np.zeros(best_run_landmarks.shape)
 
     for landmark in range(coeffs.shape[1]):
-        print(landmark)
-        ranks = np.where(best_run_landmarks == landmark)[1]
-        median_ranks[landmark] = np.median(ranks)
+        ranks_fast[landmark, np.argsort(-coeffs[landmark])] = np.arange(coeffs.shape[1])
+    medians_fast = np.median(ranks_fast, axis=0)
 
     best_landmarks = np.argsort(median_ranks)[:args.n_landmarks]
     best_ranks = median_ranks[best_landmarks]

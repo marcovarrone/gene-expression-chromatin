@@ -1,5 +1,4 @@
 import argparse
-import os
 import time
 
 import networkx as nx
@@ -12,14 +11,6 @@ from dgl import DGLGraph
 from dgl.nn.pytorch.conv import SAGEConv
 from sklearn.preprocessing import StandardScaler
 
-torch.set_num_threads(5)
-
-os.environ["OMP_NUM_THREADS"] = "5"
-os.environ["OPENBLAS_NUM_THREADS"] = "5"
-os.environ["MKL_NUM_THREADS"] = "5"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "5"
-os.environ["NUMEXPR_NUM_THREADS"] = "5"
-
 
 class GraphSAGE(nn.Module):
     def __init__(self,
@@ -31,6 +22,7 @@ class GraphSAGE(nn.Module):
                  activation,
                  input_dropout,
                  dropout,
+                 feature_dropout,
                  aggregator_type):
         super(GraphSAGE, self).__init__()
         self.layers = nn.ModuleList()
@@ -39,13 +31,16 @@ class GraphSAGE(nn.Module):
         self.dropout = dropout
 
         # input layer
-        self.layers.append(SAGEConv(in_feats, n_hidden, aggregator_type, feat_drop=dropout, activation=activation))
+        self.layers.append(
+            SAGEConv(in_feats, n_hidden, aggregator_type, feat_drop=feature_dropout, activation=activation))
         # hidden layers
         for i in range(n_layers - 1):
-            self.layers.append(SAGEConv(n_hidden, n_hidden, aggregator_type, feat_drop=dropout, activation=activation))
+            self.layers.append(
+                SAGEConv(n_hidden, n_hidden, aggregator_type, feat_drop=feature_dropout, activation=activation))
         # output layer
         self.layers.append(
-            SAGEConv(n_hidden, out_feats, aggregator_type, feat_drop=dropout, activation=None))  # activation None
+            SAGEConv(n_hidden, out_feats, aggregator_type, feat_drop=feature_dropout,
+                     activation=None))  # activation None
 
     def forward(self, features):
         h = features
@@ -73,18 +68,31 @@ class GraphSAGEWrapper:
                  activation=F.tanh,
                  input_dropout=0.0,
                  dropout=0.0,
+                 feature_dropout=0.0,
                  aggregator_type='mean',
                  cuda=False,
-                 self_loop=True):
+                 self_loop=True,
+                 wandb=False):
 
         self.cuda = cuda
+        self.wandb = wandb
+        if self.wandb:
+            wandb.config.update({"architecture": "graphsage_layers_dropout",
+                                 "n_hidden": n_hidden,
+                                 "n_layers": n_layers,
+                                 "activation": activation.__class__.__name__,
+                                 "input_dropout": input_dropout,
+                                 "dropout": dropout,
+                                 "aggregator_type": aggregator_type,
+                                 "self_loop": self_loop
+                                 })
 
         g_nx = nx.from_numpy_array(graph, create_using=nx.DiGraph)
 
         # add self loop
         if self_loop:
             g_nx.remove_edges_from(g_nx.selfloop_edges())
-            g_nx.add_edges_from(zip(g_nx.nodes(), g_nx.nodes()))
+        g_nx.add_edges_from(zip(g_nx.nodes(), g_nx.nodes()))
         g = DGLGraph()
         g.from_networkx(g_nx)
         # g = DGLGraph(g)
@@ -105,9 +113,12 @@ class GraphSAGEWrapper:
                                activation,
                                input_dropout,
                                dropout,
+                               feature_dropout,
                                aggregator_type)
 
     def fit(self, X, Y, train_mask, val_mask=None, n_epochs=200, lr=1e-2, weight_decay=0.0):
+        if self.wandb:
+            self.wandb.config.update({"epochs": n_epochs, "learning_rate": lr})
         X = torch.FloatTensor(X)
         Y = torch.FloatTensor(Y)
         n_edges = self.g.number_of_edges()
@@ -122,6 +133,8 @@ class GraphSAGEWrapper:
 
         # initialize graph
         dur = []
+        if self.wandb:
+            self.wandb.watch(self.model)
         for epoch in range(n_epochs):
             self.model.train()
             if epoch >= 3:
@@ -142,6 +155,8 @@ class GraphSAGEWrapper:
                 print("Epoch {:05d} | Time(s) {:.4f} | Loss {:.4f} | Val loss {:.4f} | "
                       "ETputs(KTEPS) {:.2f}".format(epoch, np.mean(dur), loss.item(),
                                                     val_loss, n_edges / np.mean(dur) / 1000))
+                if self.wandb:
+                    self.wandb.log({"Validation Loss": val_loss})
             else:
                 print("Epoch {:05d} | Time(s) {:.4f} | Loss {:.4f} | ETputs(KTEPS) {:.2f}".format(
                     epoch,
@@ -151,6 +166,12 @@ class GraphSAGEWrapper:
 
     def embeddings(self, features):
         return self.model.embedding(features).detach().numpy()
+
+    def test(self, X, Y, mask):
+        loss = self.evaluate(X, Y, mask)
+        if self.wandb:
+            self.wandb.log({"Test Loss": loss})
+        return loss
 
     def evaluate(self, X, Y, mask):
         X = torch.FloatTensor(X)
@@ -163,9 +184,6 @@ class GraphSAGEWrapper:
 
 
 # nx.set_node_attributes(g_nx, dict(enumerate(features)))
-
-
-
 
 
 def main(args):

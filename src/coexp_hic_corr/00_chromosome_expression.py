@@ -8,14 +8,12 @@ import pandas as pd
 config = configparser.ConfigParser()
 config.read('/home/varrone/config.ini')
 
-chromosomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
-
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
 parser.add_argument('--dataset', type=str, default='GM19238')
 parser.add_argument('--gene-info', type=str, default='GRCh37_gene_info.txt')
-parser.add_argument('--chromosome', type=int, choices=chromosomes, default=2)
+parser.add_argument('--chromosome', type=int, default=2)
 parser.add_argument('--zero-median', default=True, action='store_true')
 parser.add_argument('--save-plot', default=True, action='store_true')
 

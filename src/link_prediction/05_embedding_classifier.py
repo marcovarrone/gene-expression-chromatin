@@ -2,8 +2,11 @@ import argparse
 import os
 import pickle
 
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
+import pandas as pd
+import scipy.sparse as sps
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 
@@ -32,7 +35,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "10"
 
 
 def topological_features(_args, _edges, _non_edges):
-    adj_hic = np.load('data/GM19238/interactions/interactions_{}.npy'.format(_args.interactions))
+    adj_hic = np.load('data/{}/interactions/interactions_{}.npy'.format(_args.dataset, _args.interactions))
     graph_hic = nx.from_numpy_array(adj_hic)
     graph_hic = nx.convert_node_labels_to_integers(graph_hic)
 
@@ -49,8 +52,7 @@ def topological_features(_args, _edges, _non_edges):
     clustering_sub_neg, clustering_avg_neg = link_centrality(clustering, _non_edges)
 
     node_embs = np.vstack((degrees, betweenness, clustering)).T
-    print(node_embs.shape)
-    np.save('embeddings/embeddings_chr_{:02d}_topological'.format(_args.chr), node_embs)
+    np.save('embeddings/embeddings_chr_{:02d}_{:02d}_topological'.format(_args.chr_src, _args.chr_tgt), node_embs)
 
     parameters_pos = np.vstack((degrees_sub_pos, degrees_avg_pos,
                                 betweenness_sub_pos, betweenness_avg_pos,
@@ -77,63 +79,123 @@ def topological_features(_args, _edges, _non_edges):
         parameters_neg = np.vstack((parameters_neg, shortest_path_lengths_neg, jaccard_index_neg))
 
     X = np.hstack((parameters_pos, parameters_neg)).T
+    print(X.shape)
     if _args.edge_features:
-        imp = SimpleImputer(missing_values=np.nan, strategy='mean')
+        imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=9999)
         X = imp.fit_transform(X)
     return X
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='GM19238')
-    parser.add_argument('--chr', type=int, required=True)
-    parser.add_argument('--embedding-pt1', type=str)
-    parser.add_argument('--embedding-pt2', type=str)
-    parser.add_argument('--method', type=str, default='gae')
-    parser.add_argument('--interactions', type=str)
+    parser.add_argument('--dataset', type=str, default='MCF7')
+    parser.add_argument('--chr-src', type=int, default=1)
+    parser.add_argument('--chr-tgt', type=int, default=1)
+    parser.add_argument('--n-iter', type=int, default=2)
+    parser.add_argument('--embedding-pt1', type=str, default=None)
+    parser.add_argument('--embedding-pt2', type=str, default=None)
+    parser.add_argument('--method', type=str, default='topological')
+    parser.add_argument('--interactions', type=str, default='primary_oe_NONE_1_1_10000_40000_sum_0.0')
     parser.add_argument('--edge-features', default=True, action='store_true')
-    parser.add_argument('--aggregator', default='hadamard', choices=['hadamard', 'concat'])
+    parser.add_argument('--distance-feature', default=False, action='store_true')
+    parser.add_argument('--aggregator', default='concat', choices=['hadamard', 'concat'])
     parser.add_argument('--classifier', default='mlp', choices=['mlp', 'lr', 'svm', 'mlp_2'])
-    parser.add_argument('--threshold', type=int, default=90)
+    parser.add_argument('--threshold', type=float, default=0.28)
+    parser.add_argument('--inter', default=False, action='store_true')
+    parser.add_argument('--genes-chr', default=True, action='store_true')
     args = parser.parse_args()
 
     coexpression = np.load(
-        'data/GM19238/coexpression/coexpression_chr_{:02d}_{}.npy'.format(args.chr, args.threshold))
-    graph_coexp = nx.from_numpy_array(coexpression)
+        'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}.npy'.format(args.dataset, args.chr_src, args.chr_tgt,
+                                                                            args.threshold))
+
+    if coexpression.shape[0] != coexpression.shape[1]:
+        graph_coexp = nx.algorithms.bipartite.from_biadjacency_matrix(sps.csr_matrix(coexpression))
+    else:
+        graph_coexp = nx.from_numpy_array(coexpression)
 
     edges = np.array(list(graph_coexp.edges))
     n_edges = edges.shape[0]
+    print('N. edges', n_edges)
+    plt.imshow(coexpression, cmap='Oranges')
+    plt.show()
 
-    non_edges = np.array(list(nx.non_edges(graph_coexp)))
-    non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
-    n_non_edges = non_edges.shape[0]
+    if coexpression.shape[0] != coexpression.shape[1]:
+        src_nodes = np.arange(coexpression.shape[0])
+        tgt_nodes = np.arange(coexpression.shape[0], coexpression.shape[0] + coexpression.shape[1])
+        non_edges = list()
+        while len(non_edges) < n_edges:
+            src = np.random.choice(src_nodes)
+            tgt = np.random.choice(tgt_nodes)
+            if not graph_coexp.has_edge(src, tgt):
+                non_edges.append((src, tgt))
+        non_edges = np.array(non_edges)
+        n_non_edges = len(non_edges)
 
-    if args.embedding_pt1 == 'topological':
+    else:
+        non_edges = np.array(list(nx.non_edges(graph_coexp)))
+        non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
+        n_non_edges = non_edges.shape[0]
+
+    n_nodes = coexpression.shape[0] + coexpression.shape[1]
+
+    adj = np.zeros((n_nodes, n_nodes))
+    adj[edges[:, 0], edges[:, 1]] = 1
+    adj[non_edges[:, 0], non_edges[:, 1]] = -1
+
+    plt.imshow(adj, cmap='seismic')
+    plt.show()
+
+    if args.method == 'topological':
         X = topological_features(args, edges, non_edges)
     else:
         embeddings = np.load(
-            './embeddings/{}/{}_{}_{}_{}.npy'.format(args.method, args.embedding_pt1, args.chr, args.chr,
-                                                     args.embedding_pt2))
+            './embeddings/{}/{}/{}_{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, args.chr_src,
+                                                        args.chr_tgt, args.embedding_pt2))
+
         if args.aggregator == 'hadamard':
             pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
             neg_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], non_edges)))
+
+            if args.distance_feature:
+                gene_info = pd.read_csv(
+                    '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_{:02d}_{:02d}_rna.csv'.format(
+                        args.dataset, args.dataset, args.chr_src, args.chr_tgt))
+
+                pos_distances = np.abs(gene_info.iloc[edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
+                                       gene_info.iloc[edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
+
+                neg_distances = np.abs(gene_info.iloc[non_edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
+                                       gene_info.iloc[non_edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
+
+                pos_features = np.hstack((pos_features, pos_distances[:, None]))
+                neg_features = np.hstack((neg_features, neg_distances[:, None]))
+
         else:
-            pos_features = np.array(list(map(lambda edge: np.hstack(embeddings[edge[0]], embeddings[edge[1]]), edges)))
+            pos_features = np.array(
+                list(map(lambda edge: np.hstack((embeddings[edge[0]], embeddings[edge[1]])), edges)))
             neg_features = np.array(
-                list(map(lambda edge: np.hstack(embeddings[edge[0]], embeddings[edge[1]]), non_edges)))
+                list(map(lambda edge: np.hstack((embeddings[edge[0]], embeddings[edge[1]])), non_edges)))
         X = np.vstack((pos_features, neg_features))
     y = np.hstack((np.ones(n_edges), np.zeros(n_non_edges)))
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
+    print(X_train.shape)
+    results = evaluate_embedding(X_train, y_train, args.classifier, n_iter=args.n_iter, verbose=1)
 
-    results = evaluate_embedding(X_train, y_train, args.classifier)
-
-    if not os.path.exists('results/{}/chr_{:02d}'.format(args.dataset, args.chr)):
-        os.makedirs('results/{}/chr_{:02d}'.format(args.dataset, args.chr))
-
-    with open('results/{}/chr_{:02d}/{}_{}_{}_{}.pkl'.format(args.dataset, args.chr, args.classifier, args.method,
-                                                          args.embedding_pt1, args.embedding_pt2),
-              'wb') as file_save:
-        pickle.dump(results, file_save)
+    if not os.path.exists('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src)):
+        os.makedirs('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src))
+    if args.method == 'topological':
+        with open('results/{}/chr_{:02d}/{}_{}_{}.pkl'.format(args.dataset, args.chr_src, args.classifier, args.method,
+                                                              args.interactions),
+                  'wb') as file_save:
+            pickle.dump(results, file_save)
+    else:
+        with open('results/{}/chr_{:02d}/{}_{}_{}_{:02d}_{:02d}_{}.pkl'.format(args.dataset, args.chr_src,
+                                                                               args.classifier, args.method,
+                                                                               args.embedding_pt1, args.chr_src,
+                                                                               args.chr_tgt, args.embedding_pt2),
+                  'wb') as file_save:
+            pickle.dump(results, file_save)
 
     print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
           np.mean(results['f1']),

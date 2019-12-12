@@ -18,11 +18,11 @@ parser.add_argument('--chr-src', type=int, default=1)
 parser.add_argument('--chr-tgt', type=int, default=2)
 parser.add_argument('--resolution', type=int, default=50000)
 parser.add_argument('--window', type=int, default=50000)
-parser.add_argument('--aggregation', type=str, choices=['median', 'sum', 'max', None], default='sum')
+parser.add_argument('--aggregation', type=str, choices=['median', 'sum', 'max', None], default=None)
 parser.add_argument('--save-matrix', default=False, action='store_true')
 parser.add_argument('--csv', default=False, action='store_true')
 parser.add_argument('--save-plot', default=False, action='store_true')
-parser.add_argument('--force', default=False, action='store_true')
+parser.add_argument('--force', default=True, action='store_true')
 parser.add_argument('--all-regions', default=False, action='store_true')
 
 args = parser.parse_args()
@@ -37,16 +37,18 @@ sps_path = data_folder + hic_folder + output_file + '.npz'
 # ToDo: fix binning using digitize
 def get_gene_bins(gene, bin_size, window, bins):
     tss = gene['Transcription start site (TSS)']
-    tss_bin = round(tss / bin_size)
+    tss_bin = np.digitize(tss, bins)
     start = tss_bin - int(np.ceil((window/2) / bin_size))
-    end = tss_bin + int(np.ceil((window/2) / bin_size))
+    end = tss_bin + int(np.floor((window/2) / bin_size))
     return start if start > 0 else 0, end
 
 
 def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, window):
     contact_matrix = np.zeros((gene_info_src.shape[0], gene_info_tgt.shape[0]))
 
-    bins = np.arange(0, np.max(np.concatenate(gene_info_src['Transcription start site (TSS)'], gene_info_tgt['Transcription start site (TSS)'])+window, window))
+    tsses =np.concatenate((gene_info_src['Transcription start site (TSS)'], gene_info_tgt['Transcription start site (TSS)']))
+
+    bins = np.arange(0, np.max(tsses)+resolution, resolution)
     for i, (idx1, gene1) in enumerate(gene_info_src.iterrows()):
         start1, end1 = get_gene_bins(gene1, resolution, window, bins)
         print("Processing gene", i, "/", gene_info_src.shape[0])
@@ -65,7 +67,7 @@ def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, window):
             elif args.aggregation == 'sum':
                 value = np.sum(mat)
             else:
-                if args.window == 0:
+                if args.window == args.resolution:
                     value = mat[0]
                 else:
                     raise ValueError

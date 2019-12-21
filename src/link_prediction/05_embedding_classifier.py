@@ -92,22 +92,36 @@ if __name__ == '__main__':
     parser.add_argument('--chr-src', type=int, default=1)
     parser.add_argument('--chr-tgt', type=int, default=1)
     parser.add_argument('--n-iter', type=int, default=2)
-    parser.add_argument('--embedding-pt1', type=str, default=None)
-    parser.add_argument('--embedding-pt2', type=str, default=None)
-    parser.add_argument('--method', type=str, default='topological')
-    parser.add_argument('--interactions', type=str, default='primary_oe_NONE_1_1_10000_40000_sum_0.0')
+    parser.add_argument('--embedding-pt1', type=str, default='primary_observed_KR')
+    parser.add_argument('--embedding-pt2', type=str, default='50000_50000_0.9073_es8')
+    parser.add_argument('--method', type=str, default='distance')
+    parser.add_argument('--interactions', type=str,
+                        default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--distance-feature', default=False, action='store_true')
     parser.add_argument('--aggregator', default='concat', choices=['hadamard', 'concat'])
     parser.add_argument('--classifier', default='mlp', choices=['mlp', 'lr', 'svm', 'mlp_2'])
     parser.add_argument('--threshold', type=float, default=0.28)
     parser.add_argument('--inter', default=False, action='store_true')
-    parser.add_argument('--genes-chr', default=True, action='store_true')
+    parser.add_argument('--genes-chr', default=False, action='store_true')
+    parser.add_argument('--zero-median', default=False, action='store_true')
     args = parser.parse_args()
 
     coexpression = np.load(
-        'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}.npy'.format(args.dataset, args.chr_src, args.chr_tgt,
-                                                                            args.threshold))
+        'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}{}.npy'.format(args.dataset, args.chr_src, args.chr_tgt,
+                                                                              args.threshold,
+                                                                              '_zero_median' if args.zero_median else '', ))
+
+    if args.interactions:
+        # ToDo: fix bug if the first gene of the chromosome is disconnected
+        genes_chr = np.load(
+            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/genes_chr/{}.npy'.format(
+                args.dataset, args.interactions))
+        genes_src = np.where(genes_chr == args.chr_src)[0]
+        genes_src_offset = genes_src - np.min(genes_src)
+        genes_tgt = np.where(genes_chr == args.chr_tgt)[0]
+        genes_tgt_offset = genes_tgt - np.min(genes_tgt)
+        coexpression = coexpression[genes_src_offset[:, None], genes_tgt_offset]
 
     if coexpression.shape[0] != coexpression.shape[1]:
         graph_coexp = nx.algorithms.bipartite.from_biadjacency_matrix(sps.csr_matrix(coexpression))
@@ -132,12 +146,14 @@ if __name__ == '__main__':
         non_edges = np.array(non_edges)
         n_non_edges = len(non_edges)
 
+        n_nodes = coexpression.shape[0] + coexpression.shape[1]
+
     else:
         non_edges = np.array(list(nx.non_edges(graph_coexp)))
         non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
         n_non_edges = non_edges.shape[0]
 
-    n_nodes = coexpression.shape[0] + coexpression.shape[1]
+        n_nodes = coexpression.shape[0]
 
     adj = np.zeros((n_nodes, n_nodes))
     adj[edges[:, 0], edges[:, 1]] = 1
@@ -148,10 +164,35 @@ if __name__ == '__main__':
 
     if args.method == 'topological':
         X = topological_features(args, edges, non_edges)
+    elif args.method == 'distance':
+        gene_info = pd.read_csv(
+            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_{:02d}_rna.csv'.format(
+                args.dataset, args.dataset, args.chr_src))
+
+        pos_distances = np.abs(gene_info.iloc[edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
+                               gene_info.iloc[edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
+
+        neg_distances = np.abs(gene_info.iloc[non_edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
+                               gene_info.iloc[non_edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
+
+        pos_features = pos_distances[:, None]
+        neg_features = neg_distances[:, None]
+        X = np.vstack((pos_features, neg_features))
     else:
-        embeddings = np.load(
-            './embeddings/{}/{}/{}_{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, args.chr_src,
-                                                        args.chr_tgt, args.embedding_pt2))
+        if args.genes_chr:
+            embeddings = np.load(
+                './embeddings/{}/{}/{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, 'all',
+                                                         args.embedding_pt2))
+            # ToDo: check inter-chromosomal prediction case
+            embeddings = embeddings[genes_src]
+            adj = np.dot(embeddings, embeddings.T)
+
+            plt.imshow(adj, cmap='Oranges')
+            plt.show()
+        else:
+            embeddings = np.load(
+                './embeddings/{}/{}/{}_{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, args.chr_src,
+                                                            args.chr_tgt, args.embedding_pt2))
 
         if args.aggregator == 'hadamard':
             pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
@@ -185,15 +226,18 @@ if __name__ == '__main__':
     if not os.path.exists('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src)):
         os.makedirs('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src))
     if args.method == 'topological':
-        with open('results/{}/chr_{:02d}/{}_{}_{}.pkl'.format(args.dataset, args.chr_src, args.classifier, args.method,
-                                                              args.interactions),
-                  'wb') as file_save:
+        with open(
+                'results/{}/chr_{:02d}/{}_{}_{}{}.pkl'.format(args.dataset, args.chr_src, args.classifier, args.method,
+                                                              args.interactions,
+                                                              '_zero_median' if args.zero_median else '', ),
+                'wb') as file_save:
             pickle.dump(results, file_save)
     else:
-        with open('results/{}/chr_{:02d}/{}_{}_{}_{:02d}_{:02d}_{}.pkl'.format(args.dataset, args.chr_src,
-                                                                               args.classifier, args.method,
-                                                                               args.embedding_pt1, args.chr_src,
-                                                                               args.chr_tgt, args.embedding_pt2),
+        with open('results/{}/chr_{:02d}/{}_{}_{}_{:02d}_{:02d}_{}{}.pkl'.format(args.dataset, args.chr_src,
+                                                                                 args.classifier, args.method,
+                                                                                 args.embedding_pt1, args.chr_src,
+                                                                                 args.chr_tgt, args.embedding_pt2,
+                                                                                 '_zero_median' if args.zero_median else '', ),
                   'wb') as file_save:
             pickle.dump(results, file_save)
 

@@ -11,9 +11,9 @@ config.read('/home/varrone/config.ini')
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
-parser.add_argument('--dataset', type=str, default='MCF7')
-parser.add_argument('--chr-src', type=int, default=2)
-parser.add_argument('--chr-tgt', type=int, default=2)
+parser.add_argument('--dataset', type=str, default='PRAD')
+parser.add_argument('--chr-src', type=int, default=3)
+parser.add_argument('--chr-tgt', type=int, default=3)
 parser.add_argument('--zero-median', default=False, action='store_true')
 parser.add_argument('--save-plot', default=True, action='store_true')
 parser.add_argument('--save-coexp', default=True, action='store_true')
@@ -28,8 +28,13 @@ if __name__ == '__main__':
     df = df.dropna()
     df = df.sort_values('Transcription start site (TSS)')
 
-    df_chr_src = df[df['Chromosome/scaffold name'] == args.chr_src]
-    df_chr_tgt = df[df['Chromosome/scaffold name'] == args.chr_tgt]
+
+    if args.chr_src == -1:
+        df_chr_src = df
+        df_chr_tgt = df
+    else:
+        df_chr_src = df[df['Chromosome/scaffold name'] == args.chr_src]
+        df_chr_tgt = df[df['Chromosome/scaffold name'] == args.chr_tgt]
 
     if args.chr_src == args.chr_tgt:
         df_chr_src.to_csv(rna_folder + str(args.dataset) + '_chr_{:02d}_rna.csv'.format(args.chr_src))
@@ -52,8 +57,10 @@ if __name__ == '__main__':
 
     if args.save_plot:
         plt.imshow(1 - coexp, cmap='RdBu')
-        plt.savefig('plots/{}/coexpression_chr_{:02d}_{:02d}.png'.format(args.dataset, args.chr_src, args.chr_tgt))
+        plt.savefig('plots/{}/coexpression_chr_{:02d}_{:02d}{}.png'.format(args.dataset, args.chr_src, args.chr_tgt,
+                                                                           '_zero_median' if args.zero_median else ''))
+        plt.show()
 
     if args.save_coexp:
-        np.save('data/{}/coexp/coexpression_chr_{:02d}_{:02d}.npy'.format(args.dataset, args.chr_src, args.chr_tgt),
-                gene_exp_src)
+        np.save('data/{}/coexp/coexpression_chr_{:02d}_{:02d}{}.npy'.format(args.dataset, args.chr_src, args.chr_tgt, '_zero_median' if args.zero_median else ''),
+                coexp)

@@ -7,13 +7,13 @@ import scipy.sparse as sps
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
-parser.add_argument('-d', '--dataset', type=str, default='GM12878')
-parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='oe')
+parser.add_argument('-d', '--dataset', type=str, default='MCF7')
+parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
 parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR'], default='NONE')
-parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='combined')
-parser.add_argument('--chr-src', type=int, default=11)
-parser.add_argument('--chr-tgt', type=int, default=11)
-parser.add_argument('--resolution', type=int, default=10000)
+parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='primary')
+parser.add_argument('--chr-src', type=int, default=1)
+parser.add_argument('--chr-tgt', type=int, default=3)
+parser.add_argument('--resolution', type=int, default=100000)
 parser.add_argument('--force', default=False, action='store_true')
 args = parser.parse_args()
 

@@ -10,20 +10,20 @@ import scipy.sparse as sps
 parser = argparse.ArgumentParser()
 
 # ToDo: add description
-parser.add_argument('-rd', '--rna-dataset', type=str, default='MCF7')
-parser.add_argument('-hd', '--hic-dataset', type=str, default='MCF7')
+parser.add_argument('-rd', '--rna-dataset', type=str, default='PRAD')
+parser.add_argument('-hd', '--hic-dataset', type=str, default='PRAD')
 parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
-parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR'], default='NONE')
+parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR'], default='KR')
 parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='primary')
-parser.add_argument('--chr-src', type=int, default=1)
+parser.add_argument('--chr-src', type=int, default=2)
 parser.add_argument('--chr-tgt', type=int, default=2)
-parser.add_argument('--resolution', type=int, default=100000)
-parser.add_argument('--window', type=int, default=100000)
+parser.add_argument('--resolution', type=int, default=40000)
+parser.add_argument('--window', type=int, default=40000)
 parser.add_argument('--aggregation', type=str, choices=['median', 'sum', 'max', None], default=None)
 parser.add_argument('--save-matrix', default=False, action='store_true')
 parser.add_argument('--csv', default=False, action='store_true')
 parser.add_argument('--save-plot', default=False, action='store_true')
-parser.add_argument('--force', default=False, action='store_true')
+parser.add_argument('--force', default=True, action='store_true')
 parser.add_argument('--all-regions', default=False, action='store_true')
 
 args = parser.parse_args()
@@ -137,40 +137,15 @@ if __name__ == '__main__':
         print("Data already present. Loading from file.")
         contact_matrix = np.load(hic_folder + hic_output_file + '.npy')
     else:
-        downloaded = False
-        if not os.path.exists(sps_path):
-            downloaded = True
-            print("Hi-C data not present. Downloading...")
-            os.system(
-                'python3 01_juicer2numpy.py --dataset {} --type {} --norm {} --file {} --chr-src {} --chr-tgt {} --resolution {}'.format(
-                    args.hic_dataset, args.type, args.norm, args.file, args.chr_src, args.chr_tgt, args.resolution))
-            print("Downloading completed")
-        hic_matrix = sps.load_npz(sps_path)
-
-        #if downloaded:
-        #    os.remove(sps_path)
-
-        if args.all_regions:
-            contact_matrix = hic_matrix.A
-            contact_matrix[np.isnan(contact_matrix)] = 0
-            contact_matrix += contact_matrix.T
-            np.fill_diagonal(contact_matrix, hic_matrix.A.diagonal())
-            gene_idxs_src = np.round(df_rna_src['Transcription start site (TSS)'].to_numpy() / args.resolution) \
-                .astype(int)
-            gene_idxs_tgt = np.round(df_rna_tgt['Transcription start site (TSS)'].to_numpy() / args.resolution) \
-                .astype(int)
-
-            #zero_rows = np.where((contact_matrix == 0).all(axis=1))[0]
-            #gene_idxs_src = gene_idxs_src[~np.isin(gene_idxs_src, zero_rows)]
-            #contact_matrix = np.delete(contact_matrix, zero_rows, axis=0)
-
-            #zero_cols = np.where((contact_matrix == 0).all(axis=0))[0]
-            #gene_idxs_tgt = gene_idxs_src[~np.isin(gene_idxs_tgt, zero_cols)]
-            #contact_matrix = np.delete(contact_matrix, zero_cols, axis=1)
-
-            np.save(data_folder + 'gene_idxs/{}.npy'.format(hic_output_file), gene_idxs_src)
+        hic_matrix = sps.load_npz('/home/varrone/Data/PRAD/primary_observed_KR/primary_{}_{}_40000.npz'.format(args.chr_src, args.chr_tgt))
+        if args.chr_src == args.chr_tgt:
+            hic_matrix = sps.triu(hic_matrix)
+            hic_matrix_full = hic_matrix + hic_matrix.T
+            hic_matrix_full = hic_matrix_full.todense()
+            np.fill_diagonal(hic_matrix_full, np.diagonal(hic_matrix.todense()))
         else:
-            contact_matrix = generate_hic(hic_matrix, df_rna_src, df_rna_tgt, args.resolution, args.window, args.chr_src, args.chr_tgt)
+            hic_matrix_full = hic_matrix
+        contact_matrix = generate_hic(hic_matrix_full, df_rna_src, df_rna_tgt, args.resolution, args.window, args.chr_src, args.chr_tgt)
 
     if args.save_matrix:
         if not os.path.exists(hic_folder):

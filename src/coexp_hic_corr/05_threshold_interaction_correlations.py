@@ -62,13 +62,13 @@ def equal(threshold, num_most, least):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='GM19238')
-    parser.add_argument('--chr', type=int, default=11)
+    parser.add_argument('--chr', type=int, default=2)
     parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
     parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR'], default='KR')
     parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='combined')
     parser.add_argument('--resolution', type=int, default=10000)
     parser.add_argument('--equal', default=True, action='store_true')
-    parser.add_argument('--least', default=False, action='store_true')
+    parser.add_argument('--least', default=True, action='store_true')
     parser.add_argument('--num-most', type=int, default=25)
     args = parser.parse_args()
 

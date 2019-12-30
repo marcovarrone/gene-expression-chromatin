@@ -5,14 +5,15 @@ import numpy as np
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dataset', type=str, default='PRAD')
+    parser.add_argument('-d', '--dataset', type=str, default='MCF7')
     parser.add_argument('--oe', default=False, action='store_true')
-    parser.add_argument('--hic-intra', type=str, default='primary_observed_KR_{}_40000_40000')
-    parser.add_argument('--hic-inter', type=str, default='primary_observed_KR_{}_40000_40000')
+    parser.add_argument('--hic-intra', type=str, default='primary_observed_KR_{}_50000_50000')
+    parser.add_argument('--hic-inter', type=str, default='primary_observed_KR_{}_50000_50000')
     parser.add_argument('--interactions', default=False, action='store_true')
-    parser.add_argument('--thr-intra', type=int, default=7.885)
+    parser.add_argument('--thr-intra', type=int, default=0.9073)
     parser.add_argument('--thr-inter', type=int, default=0)
     parser.add_argument('--no-intra', default=False, action='store_true')
+    parser.add_argument('--no-inter', default=True, action='store_true')
     parser.add_argument('--save', default=True, action='store_true')
     parser.add_argument('--save-genes-chr', default=True, action='store_true')
     args = parser.parse_args()
@@ -30,21 +31,41 @@ if __name__ == '__main__':
         row = None
         for j in range(1, 23):
             if i > j:
-                hic = np.load(data_folder + args.hic_inter.format(str(j) + '_' + str(i)) + '{}.npy'.format(
-                    ('_' + str(args.thr_inter)) if args.interactions else '')).T
+                if args.no_inter:
+                    hic = np.load(data_folder + args.hic_intra.format(str(i) + '_' + str(i)) + '{}.npy'.format(
+                        ('_' + str(args.thr_intra)) if args.interactions else ''))
+                    shape_0 = hic.shape[0]
+                    hic = np.load(data_folder + args.hic_intra.format(str(j) + '_' + str(j)) + '{}.npy'.format(
+                        ('_' + str(args.thr_intra)) if args.interactions else ''))
+                    shape_1 = hic.shape[1]
 
-                # hic_weighted = hic.copy()
-                if not args.interactions and args.thr_inter is not None:
-                    hic[hic <= args.thr_inter] = 0
-                    hic[hic > 0] = 1
+                    hic = np.zeros((shape_0, shape_1))
+                else:
+                    hic = np.load(data_folder + args.hic_inter.format(str(j) + '_' + str(i)) + '{}.npy'.format(
+                        ('_' + str(args.thr_inter)) if args.interactions else '')).T
+
+                    # hic_weighted = hic.copy()
+                    if not args.interactions and args.thr_inter is not None:
+                        hic[hic <= args.thr_inter] = 0
+                        hic[hic > 0] = 1
             elif i < j:
-                hic = np.load(data_folder + args.hic_inter.format(str(i) + '_' + str(j)) + '{}.npy'.format(
-                    ('_' + str(args.thr_inter)) if args.interactions else ''))
+                if args.no_inter:
+                    hic = np.load(data_folder + args.hic_intra.format(str(i) + '_' + str(i)) + '{}.npy'.format(
+                        ('_' + str(args.thr_intra)) if args.interactions else ''))
+                    shape_0 = hic.shape[0]
+                    hic = np.load(data_folder + args.hic_intra.format(str(j) + '_' + str(j)) + '{}.npy'.format(
+                        ('_' + str(args.thr_intra)) if args.interactions else ''))
+                    shape_1 = hic.shape[1]
 
-                # hic_weighted = hic.copy()
-                if not args.interactions and args.thr_inter is not None:
-                    hic[hic <= args.thr_inter] = 0
-                    hic[hic > 0] = 1
+                    hic = np.zeros((shape_0, shape_1))
+                else:
+                    hic = np.load(data_folder + args.hic_inter.format(str(i) + '_' + str(j)) + '{}.npy'.format(
+                        ('_' + str(args.thr_inter)) if args.interactions else ''))
+
+                    # hic_weighted = hic.copy()
+                    if not args.interactions and args.thr_inter is not None:
+                        hic[hic <= args.thr_inter] = 0
+                        hic[hic > 0] = 1
             else:
                 hic = np.load(data_folder + args.hic_intra.format(str(i) + '_' + str(j)) + '{}.npy'.format(
                     ('_' + str(args.thr_intra)) if args.interactions else ''))

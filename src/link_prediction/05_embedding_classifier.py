@@ -36,7 +36,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "10"
 
 def topological_features(_args, _edges, _non_edges):
     adj_hic = np.load(
-        'data/{}/interactions/interactions_{}_{}.npy'.format(_args.dataset, _args.interactions, _args.thr_interactions))
+        'data/{}/{}/{}_{}_{}.npy'.format(_args.dataset, _args.folder, _args.folder,  _args.name, _args.thr_interactions))
     graph_hic = nx.from_numpy_array(adj_hic)
     graph_hic = nx.convert_node_labels_to_integers(graph_hic)
 
@@ -98,13 +98,14 @@ if __name__ == '__main__':
     parser.add_argument('--n-iter', type=int, default=2)
     parser.add_argument('--embedding-pt1', type=str, default='primary_observed_KR')
     parser.add_argument('--embedding-pt2', type=str, default='50000_50000_0.9073_es8')
-    parser.add_argument('--method', type=str, default='topological')
+    parser.add_argument('--method', type=str, default='svd')
     parser.add_argument('--interactions', type=str,
                         default='primary_observed_KR_1_1_50000_50000')
+    parser.add_argument('--coexpression', type=str, default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--distance-feature', default=False, action='store_true')
     parser.add_argument('--id-features', default=True, action='store_true')
-    parser.add_argument('--aggregator', default='concat', choices=['hadamard', 'concat', 'avg'])
+    parser.add_argument('--aggregator', default='concat', nargs='*')
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
     parser.add_argument('--threshold', type=float, default=0.4113)
     parser.add_argument('--thr-interactions', type=float, default=0.9073)
@@ -113,18 +114,30 @@ if __name__ == '__main__':
     parser.add_argument('--zero-median', default=False, action='store_true')
     args = parser.parse_args()
 
-    print(args.interactions)
 
     coexpression = np.load(
         'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}{}.npy'.format(args.dataset, args.chr_src, args.chr_tgt,
                                                                               args.threshold,
                                                                               '_zero_median' if args.zero_median else '', ))
 
-    if args.interactions:
+    if args.coexpression:
+        args.folder = 'coexpression'
+        args.name = args.coexpression
+        args.thr_interactions = args.threshold
+    else:
+        args.folder = 'interactions'
+        args.name = args.interactions
+
+    print(args.name)
+
+    if type(args.aggregator) == list:
+        args.aggregator = '_'.join(args.aggregator)
+
+    if args.name:
         # ToDo: fix bug if the first gene of the chromosome is disconnected
         genes_chr = np.load(
             '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/genes_chr/{}.npy'.format(
-                args.dataset, args.interactions))
+                args.dataset, args.name))
         genes_src = np.where(genes_chr == args.chr_src)[0]
         genes_src_offset = genes_src - np.min(genes_src)
         genes_tgt = np.where(genes_chr == args.chr_tgt)[0]
@@ -204,33 +217,33 @@ if __name__ == '__main__':
                 './embeddings/{}/{}/{}_{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, args.chr_src,
                                                             args.chr_tgt, args.embedding_pt2))
 
-        if args.aggregator == 'hadamard':
+        pos_features = None
+        neg_features = None
+        if 'hadamard' in args.aggregator:
             pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
             neg_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], non_edges)))
-
-            if args.distance_feature:
-                gene_info = pd.read_csv(
-                    '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_{:02d}_{:02d}_rna.csv'.format(
-                        args.dataset, args.dataset, args.chr_src, args.chr_tgt))
-
-                pos_distances = np.abs(gene_info.iloc[edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
-                                       gene_info.iloc[edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
-
-                neg_distances = np.abs(gene_info.iloc[non_edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
-                                       gene_info.iloc[non_edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
-
-                pos_features = np.hstack((pos_features, pos_distances[:, None]))
-                neg_features = np.hstack((neg_features, neg_distances[:, None]))
-        elif args.aggregator == 'avg':
-            pos_features = np.array(
+        if 'avg' in args.aggregator:
+            pos_features_avg = np.array(
                 list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), edges)))
-            neg_features = np.array(
+            neg_features_avg = np.array(
                 list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), non_edges)))
-        else:
-            pos_features = np.array(
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_avg
+                neg_features = neg_features_avg
+            else:
+                pos_features = np.hstack((pos_features, pos_features_avg))
+                neg_features = np.hstack((neg_features, neg_features_avg))
+        if 'concat' in args.aggregator:
+            pos_features_cat = np.array(
                 list(map(lambda edge: np.hstack((embeddings[edge[0]], embeddings[edge[1]])), edges)))
-            neg_features = np.array(
+            neg_features_cat = np.array(
                 list(map(lambda edge: np.hstack((embeddings[edge[0]], embeddings[edge[1]])), non_edges)))
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_cat
+                neg_features = neg_features_cat
+            else:
+                pos_features = np.hstack((pos_features, pos_features_cat))
+                neg_features = np.hstack((neg_features, neg_features_cat))
         X = np.vstack((pos_features, neg_features))
     y = np.hstack((np.ones(n_edges), np.zeros(n_non_edges)))
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
@@ -244,13 +257,13 @@ if __name__ == '__main__':
         with open(
                 'results/{}/chr_{:02d}/{}_{}_{}_{}{}{}.pkl'.format(args.dataset, args.chr_src, args.classifier,
                                                                    args.method,
-                                                                   args.interactions, args.thr_interactions,
+                                                                   args.name, args.thr_interactions,
                                                                    '_' + args.aggregator if args.aggregator != 'concat' else '',
                                                                    '_zero_median' if args.zero_median else ''),
                 'wb') as file_save:
             pickle.dump(results, file_save)
     else:
-        with open('results/{}/chr_{:02d}/{}_{}_{}_{:02d}_{:02d}_{}{}{}.pkl'.format(args.dataset, args.chr_src,
+        with open('results/{}/chr_{:02d}/{}_{}_{}_{:02d}_{:02d}_{}{}.pkl'.format(args.dataset, args.chr_src,
                                                                                    args.classifier, args.method,
                                                                                    args.embedding_pt1, args.chr_src,
                                                                                    args.chr_tgt, args.embedding_pt2,

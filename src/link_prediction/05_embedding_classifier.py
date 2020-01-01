@@ -2,13 +2,12 @@ import argparse
 import os
 import pickle
 
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
-import scipy.sparse as sps
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
 
 from link_prediction.utils import evaluate_embedding
 
@@ -89,6 +88,33 @@ def topological_features(_args, _edges, _non_edges):
         X = imp.fit_transform(X)
     return X
 
+
+def load_coexpressions(dataset, threshold, chrom, disconnected_nodes, chr_sizes, full_interactions):
+    coexpression = np.load(
+        'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}.npy'.format(dataset, i, i, threshold))
+
+    if full_interactions:
+        start_src = np.sum(chr_sizes[:chrom], dtype=int)
+        end_src = start_src + chr_sizes[chrom]
+
+        start_tgt = np.sum(chr_sizes[:chrom], dtype=int)
+        end_tgt = start_tgt + chr_sizes[chrom]
+
+        #coexpression = coexpression[start_src:end_src, start_tgt:end_tgt]
+
+        disconnected_nodes_src = disconnected_nodes[
+                                     (disconnected_nodes >= start_src) & (disconnected_nodes < end_src)] - start_src
+        disconnected_nodes_tgt = disconnected_nodes[
+                                     (disconnected_nodes >= start_tgt) & (disconnected_nodes < end_tgt)] - start_tgt
+    else:
+        disconnected_nodes_src = disconnected_nodes
+        disconnected_nodes_tgt = disconnected_nodes
+
+    coexpression = np.delete(coexpression, disconnected_nodes_src, axis=0)
+    coexpression = np.delete(coexpression, disconnected_nodes_tgt, axis=1)
+    return coexpression
+
+
 # ToDo: works only when predicting intra-chromosomal interactions
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -104,7 +130,7 @@ if __name__ == '__main__':
     parser.add_argument('--coexpression', type=str, default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
-    parser.add_argument('--aggregator', default='hadamard', nargs='*')
+    parser.add_argument('--aggregator', default='concat', nargs='*')
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
     parser.add_argument('--full-interactions', default=True, action='store_true')
     parser.add_argument('--full-coexpression', default=True, action='store_true')
@@ -119,79 +145,59 @@ if __name__ == '__main__':
         args.folder = 'interactions'
         args.name = args.interactions
 
-    if args.full_coexpression:
-        coexpression = np.load(
-            'data/{}/coexpression/coexpression_chr_all_{}{}.npy'.format(args.dataset,
-                                                                        args.threshold,
-                                                                        '_zero_median' if args.zero_median else ''))
-    else:
-        coexpression = np.load(
-            'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}{}.npy'.format(args.dataset, args.chr_src,
-                                                                                  args.chr_tgt,
-                                                                                  args.threshold,
-                                                                                  '_zero_median' if args.zero_median else ''))
-    plt.figure(figsize=(7, 7), dpi=600)
-    plt.imshow(coexpression, cmap='Oranges')
-    plt.show()
-
     print(args.name)
 
     if type(args.aggregator) == list:
         args.aggregator = '_'.join(args.aggregator)
 
     chr_sizes = np.load(
-        '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
+        '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(
+            args.dataset)).astype(int)
 
     disconnected_nodes = np.load(
         '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
             args.dataset, args.name))
 
-    if args.full_interactions and not args.full_coexpression:
-        start_src = np.cumsum(chr_sizes[:args.chr_src])
-        end_src = start_src + chr_sizes[args.chr_src]
-
-        start_tgt = np.cumsum(chr_sizes[:args.chr_tgt])
-        end_tgt = start_tgt + chr_sizes[args.chr_tgt]
-
-        coexpression = coexpression[start_src:end_src, start_tgt:end_tgt]
-
-        disconnected_nodes_src = disconnected_nodes[start_src <= disconnected_nodes < end_src] - start_src
-        disconnected_nodes_tgt = disconnected_nodes[start_tgt <= disconnected_nodes < end_tgt] - start_tgt
+    coexpressions = []
+    if args.full_coexpression:
+        for i in range(1, 23):
+            coexpressions.append(load_coexpressions(args.dataset, args.threshold, i, disconnected_nodes, chr_sizes,
+                                                    args.full_interactions))
     else:
-        disconnected_nodes_src = disconnected_nodes
-        disconnected_nodes_tgt = disconnected_nodes
+        coexpressions.append(
+            load_coexpressions(args.dataset, args.threshold, args.chr_src, disconnected_nodes, chr_sizes,
+                               args.full_interactions))
 
-    coexpression = np.delete(coexpression, disconnected_nodes_src, axis=0)
-    coexpression = np.delete(coexpression, disconnected_nodes_tgt, axis=1)
+    edges = np.empty((0, 2), dtype=np.uint32)
+    non_edges = np.empty((0, 2), dtype=np.uint32)
+    n_nodes = 0
+    start_idx = 0
+    for i, coexpression in enumerate(coexpressions, start=1):
+        graph_coexp_pos = nx.from_numpy_array(coexpression)
+        n_nodes_chr = coexpression.shape[0]
 
-    if coexpression.shape[0] != coexpression.shape[1]:
-        graph_coexp = nx.algorithms.bipartite.from_biadjacency_matrix(sps.csr_matrix(coexpression))
-    else:
-        graph_coexp = nx.from_numpy_array(coexpression)
+        edges_chr = np.array(list(nx.edges(graph_coexp_pos)))
+        start_idx = 0
+        if args.full_interactions:
+            start_idx = n_nodes
+            #edges_chr += start_idx
 
-    edges = np.array(list(graph_coexp.edges))
-    n_edges = edges.shape[0]
+        edges_nodes = np.unique(edges_chr)
 
-    if coexpression.shape[0] != coexpression.shape[1]:
-        src_nodes = np.arange(coexpression.shape[0])
-        tgt_nodes = np.arange(coexpression.shape[0], coexpression.shape[0] + coexpression.shape[1])
-        non_edges = list()
-        while len(non_edges) < n_edges:
-            src = np.random.choice(src_nodes)
-            tgt = np.random.choice(tgt_nodes)
-            if not graph_coexp.has_edge(src, tgt):
-                non_edges.append((src, tgt))
-        non_edges = np.array(non_edges)
-        n_non_edges = len(non_edges)
+        non_edges_nodes = np.setdiff1d(np.arange(n_nodes_chr), edges_nodes)
 
-        n_nodes = coexpression.shape[0] + coexpression.shape[1]
+        coexpression_neg = coexpression.copy()
+        coexpression_neg[non_edges_nodes, :] = 1
+        coexpression_neg[:, non_edges_nodes] = 1
+        graph_coexp_neg = nx.from_numpy_array(coexpression_neg)
 
-    else:
-        non_edges = np.array(list(nx.non_edges(graph_coexp)))
-        non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
-        n_non_edges = non_edges.shape[0]
+        non_edges_chr =np.array(list(nx.non_edges(graph_coexp_neg)))
+        non_edges_chr = non_edges_chr[np.random.choice(non_edges_chr.shape[0], edges_chr.shape[0], replace=False)]
 
-        n_nodes = coexpression.shape[0]
+        edges = np.concatenate((edges, start_idx + edges_chr))
+        non_edges = np.concatenate((non_edges, start_idx + non_edges_chr))
+
+        n_nodes += n_nodes_chr
 
     if args.method == 'topological':
         X = topological_features(args, edges, non_edges)
@@ -225,9 +231,9 @@ if __name__ == '__main__':
                 './embeddings/{}/{}/{}_{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, args.chr_src,
                                                             args.chr_tgt, args.embedding_pt2))
 
-        plt.figure(figsize=(7, 7), dpi=600)
-        plt.imshow(np.dot(embeddings, embeddings.T)[:1500,:1500], cmap='Oranges')
-        plt.show()
+        '''plt.figure(figsize=(7, 7), dpi=600)
+        plt.imshow(np.dot(embeddings, embeddings.T), cmap='Oranges')
+        plt.show()'''
 
         pos_features = None
         neg_features = None
@@ -257,7 +263,7 @@ if __name__ == '__main__':
                 pos_features = np.hstack((pos_features, pos_features_cat))
                 neg_features = np.hstack((neg_features, neg_features_cat))
         X = np.vstack((pos_features, neg_features))
-    y = np.hstack((np.ones(n_edges), np.zeros(n_non_edges)))
+    y = np.hstack((np.ones(edges.shape[0]), np.zeros(non_edges.shape[0])))
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
     print(X_train.shape)
     results = evaluate_embedding(X_train, y_train, args.classifier, n_iter=args.n_iter, verbose=1,

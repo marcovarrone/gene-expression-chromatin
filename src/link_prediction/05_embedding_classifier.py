@@ -2,13 +2,13 @@ import argparse
 import os
 import pickle
 
-import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
 import scipy.sparse as sps
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 
 from link_prediction.utils import evaluate_embedding
 
@@ -36,7 +36,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "10"
 
 def topological_features(_args, _edges, _non_edges):
     adj_hic = np.load(
-        'data/{}/{}/{}_{}_{}.npy'.format(_args.dataset, _args.folder, _args.folder,  _args.name, _args.thr_interactions))
+        'data/{}/{}/{}_{}.npy'.format(_args.dataset, _args.folder, _args.folder, _args.name))
     graph_hic = nx.from_numpy_array(adj_hic)
     graph_hic = nx.convert_node_labels_to_integers(graph_hic)
 
@@ -89,7 +89,7 @@ def topological_features(_args, _edges, _non_edges):
         X = imp.fit_transform(X)
     return X
 
-
+# ToDo: works only when predicting intra-chromosomal interactions
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='MCF7')
@@ -97,52 +97,72 @@ if __name__ == '__main__':
     parser.add_argument('--chr-tgt', type=int, default=1)
     parser.add_argument('--n-iter', type=int, default=2)
     parser.add_argument('--embedding-pt1', type=str, default='primary_observed_KR')
-    parser.add_argument('--embedding-pt2', type=str, default='50000_50000_0.9073_es8')
-    parser.add_argument('--method', type=str, default='svd')
+    parser.add_argument('--embedding-pt2', type=str, default='50000_50000_0.9073_es8_nw10_wl80_p1.0_q1.0')
+    parser.add_argument('--method', type=str, default='node2vec')
     parser.add_argument('--interactions', type=str,
-                        default='primary_observed_KR_1_1_50000_50000')
+                        default='primary_observed_KR_all_50000_50000_0.9073')
     parser.add_argument('--coexpression', type=str, default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
-    parser.add_argument('--distance-feature', default=False, action='store_true')
-    parser.add_argument('--id-features', default=True, action='store_true')
-    parser.add_argument('--aggregator', default='concat', nargs='*')
+    parser.add_argument('--id-features', default=False, action='store_true')
+    parser.add_argument('--aggregator', default='hadamard', nargs='*')
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
-    parser.add_argument('--threshold', type=float, default=0.4113)
-    parser.add_argument('--thr-interactions', type=float, default=0.9073)
-    parser.add_argument('--inter', default=False, action='store_true')
-    parser.add_argument('--genes-chr', default=False, action='store_true')
+    parser.add_argument('--full-interactions', default=True, action='store_true')
+    parser.add_argument('--full-coexpression', default=True, action='store_true')
     parser.add_argument('--zero-median', default=False, action='store_true')
+    parser.add_argument('--threshold', type=float, default=0.4113)
     args = parser.parse_args()
-
-
-    coexpression = np.load(
-        'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}{}.npy'.format(args.dataset, args.chr_src, args.chr_tgt,
-                                                                              args.threshold,
-                                                                              '_zero_median' if args.zero_median else '', ))
 
     if args.coexpression:
         args.folder = 'coexpression'
         args.name = args.coexpression
-        args.thr_interactions = args.threshold
     else:
         args.folder = 'interactions'
         args.name = args.interactions
+
+    if args.full_coexpression:
+        coexpression = np.load(
+            'data/{}/coexpression/coexpression_chr_all_{}{}.npy'.format(args.dataset,
+                                                                        args.threshold,
+                                                                        '_zero_median' if args.zero_median else ''))
+    else:
+        coexpression = np.load(
+            'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}{}.npy'.format(args.dataset, args.chr_src,
+                                                                                  args.chr_tgt,
+                                                                                  args.threshold,
+                                                                                  '_zero_median' if args.zero_median else ''))
+    plt.figure(figsize=(7, 7), dpi=600)
+    plt.imshow(coexpression, cmap='Oranges')
+    plt.show()
 
     print(args.name)
 
     if type(args.aggregator) == list:
         args.aggregator = '_'.join(args.aggregator)
 
-    if args.name:
-        # ToDo: fix bug if the first gene of the chromosome is disconnected
-        genes_chr = np.load(
-            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/genes_chr/{}.npy'.format(
-                args.dataset, args.name))
-        genes_src = np.where(genes_chr == args.chr_src)[0]
-        genes_src_offset = genes_src - np.min(genes_src)
-        genes_tgt = np.where(genes_chr == args.chr_tgt)[0]
-        genes_tgt_offset = genes_tgt - np.min(genes_tgt)
-        coexpression = coexpression[genes_src_offset[:, None], genes_tgt_offset]
+    chr_sizes = np.load(
+        '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
+
+    disconnected_nodes = np.load(
+        '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
+            args.dataset, args.name))
+
+    if args.full_interactions and not args.full_coexpression:
+        start_src = np.cumsum(chr_sizes[:args.chr_src])
+        end_src = start_src + chr_sizes[args.chr_src]
+
+        start_tgt = np.cumsum(chr_sizes[:args.chr_tgt])
+        end_tgt = start_tgt + chr_sizes[args.chr_tgt]
+
+        coexpression = coexpression[start_src:end_src, start_tgt:end_tgt]
+
+        disconnected_nodes_src = disconnected_nodes[start_src <= disconnected_nodes < end_src] - start_src
+        disconnected_nodes_tgt = disconnected_nodes[start_tgt <= disconnected_nodes < end_tgt] - start_tgt
+    else:
+        disconnected_nodes_src = disconnected_nodes
+        disconnected_nodes_tgt = disconnected_nodes
+
+    coexpression = np.delete(coexpression, disconnected_nodes_src, axis=0)
+    coexpression = np.delete(coexpression, disconnected_nodes_tgt, axis=1)
 
     if coexpression.shape[0] != coexpression.shape[1]:
         graph_coexp = nx.algorithms.bipartite.from_biadjacency_matrix(sps.csr_matrix(coexpression))
@@ -151,9 +171,6 @@ if __name__ == '__main__':
 
     edges = np.array(list(graph_coexp.edges))
     n_edges = edges.shape[0]
-    print('N. edges', n_edges)
-    plt.imshow(coexpression, cmap='Oranges')
-    plt.show()
 
     if coexpression.shape[0] != coexpression.shape[1]:
         src_nodes = np.arange(coexpression.shape[0])
@@ -176,11 +193,6 @@ if __name__ == '__main__':
 
         n_nodes = coexpression.shape[0]
 
-    adj = np.zeros((n_nodes, n_nodes))
-    adj[edges[:, 0], edges[:, 1]] = 1
-    adj[non_edges[:, 0], non_edges[:, 1]] = -1
-
-
     if args.method == 'topological':
         X = topological_features(args, edges, non_edges)
     elif args.method == 'ids':
@@ -202,20 +214,20 @@ if __name__ == '__main__':
     else:
         if args.method == 'random':
             embeddings = np.random.rand(n_nodes, 8)
-        elif args.genes_chr:
+        elif args.full_interactions:
             embeddings = np.load(
                 './embeddings/{}/{}/{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, 'all',
                                                          args.embedding_pt2))
             # ToDo: check inter-chromosomal prediction case
-            embeddings = embeddings[genes_src]
-            adj = np.dot(embeddings, embeddings.T)
-
-            plt.imshow(adj, cmap='Oranges')
-            plt.show()
+            embeddings = np.delete(embeddings, disconnected_nodes, axis=0)
         else:
             embeddings = np.load(
                 './embeddings/{}/{}/{}_{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, args.chr_src,
                                                             args.chr_tgt, args.embedding_pt2))
+
+        plt.figure(figsize=(7, 7), dpi=600)
+        plt.imshow(np.dot(embeddings, embeddings.T)[:1500,:1500], cmap='Oranges')
+        plt.show()
 
         pos_features = None
         neg_features = None
@@ -255,20 +267,18 @@ if __name__ == '__main__':
         os.makedirs('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src))
     if args.method == 'topological':
         with open(
-                'results/{}/chr_{:02d}/{}_{}_{}_{}{}{}.pkl'.format(args.dataset, args.chr_src, args.classifier,
-                                                                   args.method,
-                                                                   args.name, args.thr_interactions,
-                                                                   '_' + args.aggregator if args.aggregator != 'concat' else '',
-                                                                   '_zero_median' if args.zero_median else ''),
+                'results/{}/chr_{:02d}/{}_{}_{}_{}{}.pkl'.format(args.dataset, args.chr_src, args.classifier,
+                                                                 args.method, args.name, args.aggregator,
+                                                                 '_zero_median' if args.zero_median else ''),
                 'wb') as file_save:
             pickle.dump(results, file_save)
     else:
         with open('results/{}/chr_{:02d}/{}_{}_{}_{:02d}_{:02d}_{}{}.pkl'.format(args.dataset, args.chr_src,
-                                                                                   args.classifier, args.method,
-                                                                                   args.embedding_pt1, args.chr_src,
-                                                                                   args.chr_tgt, args.embedding_pt2,
-                                                                                   '_' + args.aggregator if args.aggregator != 'concat' else '',
-                                                                                   '_zero_median' if args.zero_median else ''),
+                                                                                 args.classifier, args.method,
+                                                                                 args.embedding_pt1, args.chr_src,
+                                                                                 args.chr_tgt, args.embedding_pt2,
+                                                                                 '_' + args.aggregator if args.aggregator != 'concat' else '',
+                                                                                 '_zero_median' if args.zero_median else ''),
                   'wb') as file_save:
             pickle.dump(results, file_save)
 

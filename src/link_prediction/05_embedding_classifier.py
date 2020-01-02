@@ -2,7 +2,6 @@ import argparse
 import os
 import pickle
 
-import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -99,7 +98,7 @@ if __name__ == '__main__':
     parser.add_argument('--n-iter', type=int, default=2)
     parser.add_argument('--embedding', type=str, default='es8_nw10_wl80_p1.0_q1.0')
     parser.add_argument('--method', type=str, default='node2vec')
-    parser.add_argument('--interactions', type=str, default='primary_observed_KR_all_50000_50000_0.9073')
+    parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_all_50000_50000_0.9073', 'chr_all_0.4113'])
     parser.add_argument('--coexpression', type=str, default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
@@ -129,19 +128,21 @@ if __name__ == '__main__':
     if type(args.aggregator) == list:
         args.aggregator = '_'.join(args.aggregator)
 
-    args.embedding = args.interactions + '_' + args.embedding
-
+    args.embedding = [(interaction + '_' + args.embedding) for interaction in args.interactions]
     coexpression = sps.load_npz(
         'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs, args.threshold))
 
-    print(args.name)
+    print(args.embedding)
 
     chr_sizes = np.load(
         '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
 
-    disconnected_nodes = np.load(
-        '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
-            args.dataset, args.name))
+    disconnected_nodes = np.array([])
+    for name in args.name:
+        disconnected_nodes_single = np.load(
+            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
+                args.dataset, name))
+        disconnected_nodes = np.union1d(disconnected_nodes, disconnected_nodes_single)
 
     if args.full_interactions and not args.full_coexpression:
         start_src = np.cumsum(chr_sizes[:args.chr_src])
@@ -202,8 +203,9 @@ if __name__ == '__main__':
         if args.method == 'random':
             embeddings = np.random.rand(n_nodes, 8)
         else:
-            embeddings = np.load(
-                './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
+            embeddings = np.hstack([np.load(
+                './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, embedding_name)) for embedding_name in
+                args.embedding])
 
         pos_features = None
         neg_features = None
@@ -222,8 +224,8 @@ if __name__ == '__main__':
                 pos_features = np.hstack((pos_features, pos_features_avg))
                 neg_features = np.hstack((neg_features, neg_features_avg))
         if 'concat' in args.aggregator:
-            pos_features_cat = np.hstack((embeddings[edges[:,0]], embeddings[edges[:, 1]]))
-            neg_features_cat = np.hstack((embeddings[non_edges[:,0]], embeddings[non_edges[:, 1]]))
+            pos_features_cat = np.hstack((embeddings[edges[:, 0]], embeddings[edges[:, 1]]))
+            neg_features_cat = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))
             if pos_features is None or neg_features is None:
                 pos_features = pos_features_cat
                 neg_features = neg_features_cat
@@ -248,10 +250,10 @@ if __name__ == '__main__':
             pickle.dump(results, file_save)
     else:
         with open('results/{}/chr_{:02d}/{}_{}_{}{}.pkl'.format(args.dataset, args.chr_src,
-                                                                                 args.classifier, args.method,
-                                                                                 args.embedding,
-                                                                                 args.aggregator,
-                                                                                 '_zero_median' if args.zero_median else ''),
+                                                                args.classifier, args.method,
+                                                                '_'.join(args.embedding),
+                                                                args.aggregator,
+                                                                '_zero_median' if args.zero_median else ''),
                   'wb') as file_save:
             pickle.dump(results, file_save)
 

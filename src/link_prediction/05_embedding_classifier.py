@@ -95,13 +95,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='MCF7')
     parser.add_argument('--chr-src', type=int, default=1)
-    parser.add_argument('--chr-tgt', type=int, default=1)
+    parser.add_argument('--chr-tgt', type=int, default=None)
     parser.add_argument('--n-iter', type=int, default=2)
-    parser.add_argument('--embedding-pt1', type=str, default='primary_observed_KR')
-    parser.add_argument('--embedding-pt2', type=str, default='50000_50000_0.9073_es8_nw10_wl80_p1.0_q1.0')
+    parser.add_argument('--embedding', type=str, default='es8_nw10_wl80_p1.0_q1.0')
     parser.add_argument('--method', type=str, default='node2vec')
-    parser.add_argument('--interactions', type=str,
-                        default='primary_observed_KR_all_50000_50000_0.9073')
+    parser.add_argument('--interactions', type=str, default='primary_observed_KR_all_50000_50000_0.9073')
     parser.add_argument('--coexpression', type=str, default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
@@ -120,18 +118,23 @@ if __name__ == '__main__':
         args.folder = 'interactions'
         args.name = args.interactions
 
-    if args.full_coexpression:
-        coexpression = sps.load_npz(
-            'data/{}/coexpression/coexpression_chr_all_{}.npz'.format(args.dataset, args.threshold))
-    else:
-        coexpression = np.load(
-            'data/{}/coexpression/coexpression_chr_{:02d}_{:02d}_{}.npy'.format(args.dataset, args.chr_src,
-                                                                                args.chr_tgt, args.threshold))
+    if args.chr_tgt is None:
+        args.chr_tgt = args.chr_src
 
-    print(args.name)
+    if args.full_coexpression:
+        chrs = 'all'
+    else:
+        chrs = str(args.chr_src) + '_' + str(args.chr_tgt)
 
     if type(args.aggregator) == list:
         args.aggregator = '_'.join(args.aggregator)
+
+    args.embedding = args.interactions + '_' + args.embedding
+
+    coexpression = sps.load_npz(
+        'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs, args.threshold))
+
+    print(args.name)
 
     chr_sizes = np.load(
         '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
@@ -155,12 +158,8 @@ if __name__ == '__main__':
         disconnected_nodes_src = disconnected_nodes
         disconnected_nodes_tgt = disconnected_nodes
 
-    if args.full_coexpression:
-        coexpression[disconnected_nodes_src] = 0
-        coexpression[:,disconnected_nodes_tgt] = 0
-    else:
-        coexpression = np.delete(coexpression, disconnected_nodes_src, axis=0)
-        coexpression = np.delete(coexpression, disconnected_nodes_tgt, axis=1)
+    coexpression[disconnected_nodes_src] = 0
+    coexpression[:, disconnected_nodes_tgt] = 0
 
     edges = np.array(np.argwhere(coexpression == 1))
     n_edges = edges.shape[0]
@@ -173,14 +172,9 @@ if __name__ == '__main__':
 
     coexpression_neg = coexpression.copy()
 
-    if args.full_coexpression:
-        coexpression_neg[non_nodes, :] = 0
-        coexpression_neg[:, non_nodes] = 0
-        non_edges = np.array(np.argwhere(coexpression_neg == -1))
-    else:
-        coexpression_neg[non_nodes, :] = 1
-        coexpression_neg[:, non_nodes] = 1
-        non_edges = np.array(np.argwhere(coexpression_neg == 0))
+    coexpression_neg[non_nodes, :] = 0
+    coexpression_neg[:, non_nodes] = 0
+    non_edges = np.array(np.argwhere(coexpression_neg == -1))
 
     non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
     n_non_edges = non_edges.shape[0]
@@ -207,18 +201,9 @@ if __name__ == '__main__':
     else:
         if args.method == 'random':
             embeddings = np.random.rand(n_nodes, 8)
-        elif args.full_interactions:
-            embeddings = np.load(
-                './embeddings/{}/{}/{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, 'all',
-                                                         args.embedding_pt2))
-            # ToDo: check inter-chromosomal prediction case
-            if not args.full_coexpression:
-                embeddings = np.delete(embeddings, disconnected_nodes, axis=0)
         else:
             embeddings = np.load(
-                './embeddings/{}/{}/{}_{}_{}_{}.npy'.format(args.dataset, args.method, args.embedding_pt1, args.chr_src,
-                                                            args.chr_tgt, args.embedding_pt2))
-
+                './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
 
         pos_features = None
         neg_features = None
@@ -250,7 +235,7 @@ if __name__ == '__main__':
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
     print(X_train.shape)
     results = evaluate_embedding(X_train, y_train, args.classifier, n_iter=args.n_iter, verbose=1,
-                                 clf_params={'n_estimators': 500})
+                                 clf_params={'n_estimators': 100})
 
     if not os.path.exists('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src)):
         os.makedirs('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src))
@@ -262,11 +247,10 @@ if __name__ == '__main__':
                 'wb') as file_save:
             pickle.dump(results, file_save)
     else:
-        with open('results/{}/chr_{:02d}/{}_{}_{}_{:02d}_{:02d}_{}{}.pkl'.format(args.dataset, args.chr_src,
+        with open('results/{}/chr_{:02d}/{}_{}_{}{}.pkl'.format(args.dataset, args.chr_src,
                                                                                  args.classifier, args.method,
-                                                                                 args.embedding_pt1, args.chr_src,
-                                                                                 args.chr_tgt, args.embedding_pt2,
-                                                                                 '_' + args.aggregator if args.aggregator != 'concat' else '',
+                                                                                 args.embedding,
+                                                                                 args.aggregator,
                                                                                  '_zero_median' if args.zero_median else ''),
                   'wb') as file_save:
             pickle.dump(results, file_save)

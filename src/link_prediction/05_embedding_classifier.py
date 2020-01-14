@@ -2,6 +2,7 @@ import argparse
 import os
 import pickle
 
+from time import time
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -35,30 +36,43 @@ os.environ["NUMEXPR_NUM_THREADS"] = "10"
 
 def topological_features(_args, _edges, _non_edges):
     adj_hic = np.load(
-        'data/{}/{}/{}_{}.npy'.format(_args.dataset, _args.folder, _args.folder, _args.name))
+        'data/{}/{}/{}_{}.npy'.format(_args.dataset, _args.folder, _args.folder, _args.name[0]))
     graph_hic = nx.from_numpy_array(adj_hic)
     graph_hic = nx.convert_node_labels_to_integers(graph_hic)
 
     degrees = np.array(list(dict(graph_hic.degree()).values()))
-    degrees_sub_pos, degrees_avg_pos = link_centrality(degrees, _edges)
-    degrees_sub_neg, degrees_avg_neg = link_centrality(degrees, _non_edges)
+
 
     betweenness = np.array(list(nx.betweenness_centrality(graph_hic, normalized=True).values()))
-    betweenness_sub_pos, betweenness_avg_pos = link_centrality(betweenness, _edges)
-    betweenness_sub_neg, betweenness_avg_neg = link_centrality(betweenness, _non_edges)
+
 
     clustering = np.array(list(nx.clustering(graph_hic).values()))
-    clustering_sub_pos, clustering_avg_pos = link_centrality(clustering, _edges)
-    clustering_sub_neg, clustering_avg_neg = link_centrality(clustering, _non_edges)
+
 
     node_embs = np.vstack((degrees, betweenness, clustering)).T
     np.save('embeddings/embeddings_chr_{:02d}_{:02d}_topological'.format(_args.chr_src, _args.chr_tgt), node_embs)
 
-    parameters_pos = np.vstack((degrees_sub_pos, degrees_avg_pos,
-                                betweenness_sub_pos, betweenness_avg_pos,
-                                clustering_sub_pos, clustering_avg_pos))
+    start = time()
+    if _args.aggregator == 'concat':
+        parameters_pos = np.vstack((degrees[_edges[:, 0]], degrees[_edges[:, 1]],
+                                    betweenness[_edges[:, 0]], betweenness[_edges[:, 1]],
+                                    clustering[_edges[:, 0]], clustering[_edges[:, 1]]))
 
-    parameters_neg = np.vstack((degrees_sub_neg, degrees_avg_neg,
+        parameters_neg = np.vstack((degrees[_non_edges[:, 0]], degrees[_non_edges[:, 1]],
+                                    betweenness[_non_edges[:, 0]], betweenness[_non_edges[:, 1]],
+                                    clustering[_non_edges[:, 0]], clustering[_non_edges[:, 1]]))
+    else:
+        degrees_sub_pos, degrees_avg_pos = link_centrality(degrees, _edges)
+        degrees_sub_neg, degrees_avg_neg = link_centrality(degrees, _non_edges)
+        betweenness_sub_pos, betweenness_avg_pos = link_centrality(betweenness, _edges)
+        betweenness_sub_neg, betweenness_avg_neg = link_centrality(betweenness, _non_edges)
+        clustering_sub_pos, clustering_avg_pos = link_centrality(clustering, _edges)
+        clustering_sub_neg, clustering_avg_neg = link_centrality(clustering, _non_edges)
+        parameters_pos = np.vstack((degrees_sub_pos, degrees_avg_pos,
+                                    betweenness_sub_pos, betweenness_avg_pos,
+                                    clustering_sub_pos, clustering_avg_pos))
+
+        parameters_neg = np.vstack((degrees_sub_neg, degrees_avg_neg,
                                 betweenness_sub_neg, betweenness_avg_neg,
                                 clustering_sub_neg, clustering_avg_neg))
 
@@ -77,9 +91,12 @@ def topological_features(_args, _edges, _non_edges):
 
         parameters_pos = np.vstack((parameters_pos, shortest_path_lengths_pos, jaccard_index_pos))
         parameters_neg = np.vstack((parameters_neg, shortest_path_lengths_neg, jaccard_index_neg))
-    if args.id_features:
+    if _args.id_features:
         parameters_pos = np.vstack((parameters_pos, _edges.T))
         parameters_neg = np.vstack((parameters_neg, _non_edges.T))
+
+    end = time()
+    print("Time for feature generation", end-start)
 
     X = np.hstack((parameters_pos, parameters_neg)).T
     print(X.shape)
@@ -95,19 +112,21 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='MCF7')
     parser.add_argument('--chr-src', type=int, default=1)
     parser.add_argument('--chr-tgt', type=int, default=None)
-    parser.add_argument('--n-iter', type=int, default=2)
+    parser.add_argument('--n-iter', type=int, default=1)
+    parser.add_argument('--n-splits', type=int, default=5)
     parser.add_argument('--embedding', type=str, default='es8_nw10_wl80_p1.0_q1.0')
-    parser.add_argument('--method', type=str, default='node2vec')
-    parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_all_50000_50000_0.9073', 'chr_all_0.4113'])
-    parser.add_argument('--coexpression', type=str, default=None)
+    parser.add_argument('--method', type=str, default='topological')
+    parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_all_50000_50000_0.9073'])
+    parser.add_argument('--coexpression', type=str, nargs='*', default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
-    parser.add_argument('--aggregator', default='concat', nargs='*')
+    parser.add_argument('--aggregator', default='hadamard', nargs='*')
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
-    parser.add_argument('--full-interactions', default=True, action='store_true')
-    parser.add_argument('--full-coexpression', default=True, action='store_true')
+    parser.add_argument('--full-interactions', default=False, action='store_true')
+    parser.add_argument('--full-coexpression', default=False, action='store_true')
     parser.add_argument('--zero-median', default=False, action='store_true')
     parser.add_argument('--threshold', type=float, default=0.4113)
+    parser.add_argument('--save-predictions', default=True, action='store_true')
     args = parser.parse_args()
 
     if args.coexpression:
@@ -123,21 +142,26 @@ if __name__ == '__main__':
     if args.full_coexpression:
         chrs = 'all'
     else:
-        chrs = str(args.chr_src) + '_' + str(args.chr_tgt)
+        chrs = '{:02d}_{:02d}'.format(args.chr_src, args.chr_tgt)
+        #chrs = 'all'
 
     if type(args.aggregator) == list:
         args.aggregator = '_'.join(args.aggregator)
 
-    args.embedding = [(interaction + '_' + args.embedding) for interaction in args.interactions]
+    args.embedding = [(name + '_' + args.embedding) for name in args.name]
     coexpression = sps.load_npz(
         'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs, args.threshold))
+    #coexpression = coexpression.todense()
+    degrees = np.ravel((coexpression == 1).sum(axis=0))
+    #coexpression[degrees < 2, :] = 0
+    #coexpression[:, degrees < 2] = 0
+    coexpression = sps.triu(coexpression, k=1).tocsr()
 
-    print(args.embedding)
 
     chr_sizes = np.load(
         '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
 
-    disconnected_nodes = np.array([])
+    disconnected_nodes = np.array([], dtype=int)
     for name in args.name:
         disconnected_nodes_single = np.load(
             '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
@@ -145,20 +169,21 @@ if __name__ == '__main__':
         disconnected_nodes = np.union1d(disconnected_nodes, disconnected_nodes_single)
 
     if args.full_interactions and not args.full_coexpression:
-        start_src = np.cumsum(chr_sizes[:args.chr_src])
-        end_src = start_src + chr_sizes[args.chr_src]
+        start_src = int(np.sum(chr_sizes[:args.chr_src]))
+        end_src = int(start_src + chr_sizes[args.chr_src])
 
-        start_tgt = np.cumsum(chr_sizes[:args.chr_tgt])
-        end_tgt = start_tgt + chr_sizes[args.chr_tgt]
+        start_tgt = int(np.sum(chr_sizes[:args.chr_tgt]))
+        end_tgt = int(start_tgt + chr_sizes[args.chr_tgt])
 
         coexpression = coexpression[start_src:end_src, start_tgt:end_tgt]
 
-        disconnected_nodes_src = disconnected_nodes[start_src <= disconnected_nodes < end_src] - start_src
-        disconnected_nodes_tgt = disconnected_nodes[start_tgt <= disconnected_nodes < end_tgt] - start_tgt
+        disconnected_nodes_src = disconnected_nodes[(disconnected_nodes >= start_src) & (disconnected_nodes < end_src)] - start_src
+        disconnected_nodes_tgt = disconnected_nodes[(disconnected_nodes >= start_tgt) & (disconnected_nodes < end_tgt)] - start_tgt
     else:
         disconnected_nodes_src = disconnected_nodes
         disconnected_nodes_tgt = disconnected_nodes
 
+    print("N. disconnected nodes:", len(disconnected_nodes_src))
     coexpression[disconnected_nodes_src] = 0
     coexpression[:, disconnected_nodes_tgt] = 0
 
@@ -202,6 +227,7 @@ if __name__ == '__main__':
     else:
         if args.method == 'random':
             embeddings = np.random.rand(n_nodes, 8)
+            #embeddings = np.ones((n_nodes, 8))
         else:
             embeddings = np.hstack([np.load(
                 './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, embedding_name)) for embedding_name in
@@ -210,8 +236,10 @@ if __name__ == '__main__':
         pos_features = None
         neg_features = None
         if 'hadamard' in args.aggregator:
-            pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
-            neg_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], non_edges)))
+            pos_features = embeddings[edges[:, 0]]*embeddings[edges[:, 1]]
+            neg_features = embeddings[non_edges[:, 0]]*embeddings[non_edges[:, 1]]
+            #pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
+            #neg_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], non_edges)))
         if 'avg' in args.aggregator:
             pos_features_avg = np.array(
                 list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), edges)))
@@ -223,6 +251,15 @@ if __name__ == '__main__':
             else:
                 pos_features = np.hstack((pos_features, pos_features_avg))
                 neg_features = np.hstack((neg_features, neg_features_avg))
+        if 'sub' in args.aggregator:
+            pos_features_sub = np.abs(embeddings[edges[:, 0]] - embeddings[edges[:, 1]])
+            neg_features_sub = np.abs(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]])
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_sub
+                neg_features = neg_features_sub
+            else:
+                pos_features = np.hstack((pos_features, pos_features_sub))
+                neg_features = np.hstack((neg_features, neg_features_sub))
         if 'concat' in args.aggregator:
             pos_features_cat = np.hstack((embeddings[edges[:, 0]], embeddings[edges[:, 1]]))
             neg_features_cat = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))
@@ -237,25 +274,27 @@ if __name__ == '__main__':
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
     print(X_train.shape)
     results = evaluate_embedding(X_train, y_train, args.classifier, n_iter=args.n_iter, verbose=1,
-                                 clf_params={'n_estimators': 100})
+                                 clf_params={'n_estimators': 100}, n_splits=args.n_splits)
 
     if not os.path.exists('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src)):
         os.makedirs('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src))
+
+    if not os.path.exists('predictions/{}/chr_{:02d}'.format(args.dataset, args.chr_src)):
+        os.makedirs('predictions/{}/chr_{:02d}'.format(args.dataset, args.chr_src))
+
     if args.method == 'topological':
-        with open(
-                'results/{}/chr_{:02d}/{}_{}_{}_{}{}.pkl'.format(args.dataset, args.chr_src, args.classifier,
-                                                                 args.method, args.name, args.aggregator,
-                                                                 '_zero_median' if args.zero_median else ''),
-                'wb') as file_save:
-            pickle.dump(results, file_save)
+        filename = 'chr_{:02d}/{}_{}_{}_{}{}.pkl'.format(args.chr_src, args.classifier,
+                                                                 args.method, '_'.join(args.name), args.aggregator,
+                                                                 '_zero_median' if args.zero_median else '')
     else:
-        with open('results/{}/chr_{:02d}/{}_{}_{}{}.pkl'.format(args.dataset, args.chr_src,
+        filename = 'chr_{:02d}/{}_{}_{}_{}.pkl'.format(args.chr_src,
                                                                 args.classifier, args.method,
                                                                 '_'.join(args.embedding),
-                                                                args.aggregator,
-                                                                '_zero_median' if args.zero_median else ''),
-                  'wb') as file_save:
-            pickle.dump(results, file_save)
+                                                                args.aggregator)
+
+    with open('results/{}/{}'.format(args.dataset, filename), 'wb') as file_save:
+        pickle.dump(results, file_save)
+
 
     print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
           np.mean(results['f1']),

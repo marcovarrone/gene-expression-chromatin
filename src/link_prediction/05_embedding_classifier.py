@@ -2,6 +2,9 @@ import argparse
 import os
 import pickle
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 from time import time
 import networkx as nx
 import numpy as np
@@ -115,18 +118,18 @@ if __name__ == '__main__':
     parser.add_argument('--n-iter', type=int, default=1)
     parser.add_argument('--n-splits', type=int, default=5)
     parser.add_argument('--embedding', type=str, default='es8_nw10_wl80_p1.0_q1.0')
-    parser.add_argument('--method', type=str, default='topological')
-    parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_all_50000_50000_0.9073'])
+    parser.add_argument('--method', type=str, default='node2vec')
+    parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_1_1_50000_50000_0.9073'])
     parser.add_argument('--coexpression', type=str, nargs='*', default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
-    parser.add_argument('--aggregator', default='hadamard', nargs='*')
+    parser.add_argument('--aggregator', default=['l2norm'], nargs='*')
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
     parser.add_argument('--full-interactions', default=False, action='store_true')
     parser.add_argument('--full-coexpression', default=False, action='store_true')
     parser.add_argument('--zero-median', default=False, action='store_true')
     parser.add_argument('--threshold', type=float, default=0.4113)
-    parser.add_argument('--save-predictions', default=True, action='store_true')
+    parser.add_argument('--save-predictions', default=False, action='store_true')
     args = parser.parse_args()
 
     if args.coexpression:
@@ -232,19 +235,25 @@ if __name__ == '__main__':
             embeddings = np.hstack([np.load(
                 './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, embedding_name)) for embedding_name in
                 args.embedding])
+        #ToDo: remove
+        #embeddings_src = embeddings[:, :8]
+        #embeddings_tgt = embeddings[:, 8:]
+        embeddings_src = embeddings
+        embeddings_tgt = embeddings
+
 
         pos_features = None
         neg_features = None
         if 'hadamard' in args.aggregator:
-            pos_features = embeddings[edges[:, 0]]*embeddings[edges[:, 1]]
-            neg_features = embeddings[non_edges[:, 0]]*embeddings[non_edges[:, 1]]
+            pos_features = embeddings_src[edges[:, 0]]*embeddings_tgt[edges[:, 1]]
+            neg_features = embeddings_src[non_edges[:, 0]]*embeddings_tgt[non_edges[:, 1]]
             #pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
             #neg_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], non_edges)))
         if 'avg' in args.aggregator:
             pos_features_avg = np.array(
-                list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), edges)))
+                list(map(lambda edge: np.mean((embeddings_src[edge[0]], embeddings_tgt[edge[1]]), axis=0), edges)))
             neg_features_avg = np.array(
-                list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), non_edges)))
+                list(map(lambda edge: np.mean((embeddings_src[edge[0]], embeddings_tgt[edge[1]]), axis=0), non_edges)))
             if pos_features is None or neg_features is None:
                 pos_features = pos_features_avg
                 neg_features = neg_features_avg
@@ -252,14 +261,35 @@ if __name__ == '__main__':
                 pos_features = np.hstack((pos_features, pos_features_avg))
                 neg_features = np.hstack((neg_features, neg_features_avg))
         if 'sub' in args.aggregator:
-            pos_features_sub = np.abs(embeddings[edges[:, 0]] - embeddings[edges[:, 1]])
-            neg_features_sub = np.abs(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]])
+            pos_features_sub = np.abs(embeddings_src[edges[:, 0]] - embeddings_tgt[edges[:, 1]])
+            neg_features_sub = np.abs(embeddings_src[non_edges[:, 0]] - embeddings_tgt[non_edges[:, 1]])
             if pos_features is None or neg_features is None:
                 pos_features = pos_features_sub
                 neg_features = neg_features_sub
             else:
                 pos_features = np.hstack((pos_features, pos_features_sub))
                 neg_features = np.hstack((neg_features, neg_features_sub))
+        if 'l2' in args.aggregator:
+            pos_features_l2 = np.power(embeddings_src[edges[:, 0]] - embeddings_tgt[edges[:, 1]], 2)
+            neg_features_l2 = np.power(embeddings_src[non_edges[:, 0]] - embeddings_tgt[non_edges[:, 1]], 2)
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_l2
+                neg_features = neg_features_l2
+            else:
+                pos_features = np.hstack((pos_features, pos_features_l2))
+                neg_features = np.hstack((neg_features, neg_features_l2))
+        if 'nwl2' in args.aggregator:
+
+
+
+            pos_features_l2 = np.power(embeddings_src[edges[:, 0]] - embeddings_tgt[edges[:, 1]], 2)
+            neg_features_l2 = np.power(embeddings_src[non_edges[:, 0]] - embeddings_tgt[non_edges[:, 1]], 2)
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_l2
+                neg_features = neg_features_l2
+            else:
+                pos_features = np.hstack((pos_features, pos_features_l2))
+                neg_features = np.hstack((neg_features, neg_features_l2))
         if 'concat' in args.aggregator:
             pos_features_cat = np.hstack((embeddings[edges[:, 0]], embeddings[edges[:, 1]]))
             neg_features_cat = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))

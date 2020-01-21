@@ -4,6 +4,10 @@ import os
 import pickle
 from time import time
 
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -13,6 +17,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 
 from link_prediction.utils import evaluate_embedding
+
 
 
 def link_centrality(centrality, edges):
@@ -125,7 +130,7 @@ if __name__ == '__main__':
     parser.add_argument('--coexp-features', default=False, action='store_true')
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
-    parser.add_argument('--aggregator', nargs='*', default=['hadamard'])
+    parser.add_argument('--aggregator', nargs='*', default=[None])
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
     parser.add_argument('--full-interactions', default=False, action='store_true')
     parser.add_argument('--full-coexpression', default=False, action='store_true')
@@ -144,6 +149,7 @@ if __name__ == '__main__':
     parser.add_argument('--wandb', default=True, action='store_true')
     args = parser.parse_args()
 
+    args.embedding = ''
     if args.method != 'distance':
         args.embedding = 'es{}'.format(args.emb_size)
 
@@ -172,14 +178,16 @@ if __name__ == '__main__':
     if args.coexp_features:
         args.folder = 'coexpression'
         args.name = 'chr_{}_{}'.format(chrs_coexp, args.coexp_thr)
-        experiment_id = '{}_{}_{}_{}_{}_{}'.format(args.classifier, args.n_splits, args.coexp_thr, args.method,  args.embedding, args.aggregator)
+        experiment_id = '{}_{}_{}_{}_{}_{}_{}'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thr, args.method,
+                                                   args.embedding, args.aggregator)
     else:
         args.folder = 'interactions'
         args.name = args.interactions
-        experiment_id = '{}_{}_{}_{}_{}_'.format(args.classifier, args.n_splits, args.coexp_thr, args.method, args.embedding)
+        experiment_id = '{}_{}_{}_{}_{}_{}_'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thr, args.method,
+                                                 args.embedding)
         experiment_id += '_'.join(['{}_{}_{}'.format(resolution, window, threshold) for resolution, window, threshold in
-                                  zip(args.resolutions, args.windows, args.hic_thrs)])
-        experiment_id += '_'+str(args.aggregator)
+                                   zip(args.resolutions, args.windows, args.hic_thrs)])
+        experiment_id += '_' + str(args.aggregator)
     print(experiment_id)
 
     args.embedding = [(name + '_' + args.embedding) for name in args.name]
@@ -189,17 +197,21 @@ if __name__ == '__main__':
     print(id_hash)
 
     if args.wandb:
-        wandb.init(project="coexp-inference-models", id=id_hash, resume=True)
-        wandb.config.update({'fold': args.n_splits,
-                      'windows': '_'.join(map(str, args.windows)),
-                      'resolutions': '_'.join(map(str, args.resolutions)),
-                      'hic thresholds': '_'.join(map(str, args.hic_thrs)),
-                      'coexp threshold': args.coexp_thr,
-                      'full interactions': args.full_interactions,
-                      'full coexpression': args.full_coexpression,
-                      'embedding method': args.method,
-                      'aggregator': args.aggregator,
-                      'classifier': args.classifier})
+        wandb.init(project="coexp-inference-models")
+        wandb.config.update({'id': id_hash,
+                             'dataset': args.dataset,
+                             'fold': args.n_splits,
+                             'windows': '_'.join(map(str, args.windows)),
+                             'chr src': args.chr_src,
+                             'chr tgt': args.chr_tgt,
+                             'resolutions': '_'.join(map(str, args.resolutions)),
+                             'hic thresholds': '_'.join(map(str, args.hic_thrs)),
+                             'coexp threshold': args.coexp_thr,
+                             'full interactions': args.full_interactions,
+                             'full coexpression': args.full_coexpression,
+                             'embedding method': args.method,
+                             'aggregator': args.aggregator,
+                             'classifier': args.classifier})
 
     coexpression = sps.load_npz(
         'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs_coexp, args.coexp_thr))
@@ -300,6 +312,7 @@ if __name__ == '__main__':
             else:
                 pos_features = np.hstack((pos_features, pos_features_avg))
                 neg_features = np.hstack((neg_features, neg_features_avg))
+
         if 'sub' in args.aggregator:
             pos_features_sub = np.abs(embeddings[edges[:, 0]] - embeddings[edges[:, 1]])
             neg_features_sub = np.abs(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]])
@@ -309,6 +322,15 @@ if __name__ == '__main__':
             else:
                 pos_features = np.hstack((pos_features, pos_features_sub))
                 neg_features = np.hstack((neg_features, neg_features_sub))
+        if 'l2' in args.aggregator:
+            pos_features_l2 = np.power(embeddings[edges[:, 0]] - embeddings[edges[:, 1]], 2)
+            neg_features_l2 = np.power(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]], 2)
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_l2
+                neg_features = neg_features_l2
+            else:
+                pos_features = np.hstack((pos_features, pos_features_l2))
+                neg_features = np.hstack((neg_features, neg_features_l2))
         if 'concat' in args.aggregator:
             pos_features_cat = np.hstack((embeddings[edges[:, 0]], embeddings[edges[:, 1]]))
             neg_features_cat = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))
@@ -342,9 +364,12 @@ if __name__ == '__main__':
                                                        args.aggregator)
 
     for key in results.keys():
-        wandb.run.summary.update({'chr{}_acc'.format(args.chr_src): np.mean(results['acc']),
-                       'chr{}_prec'.format(args.chr_src): np.mean(results['precision']),
-                       'chr{}_rec'.format(args.chr_src): np.mean(results['recall'])})
+        wandb.run.summary.update({'accuracy': np.mean(results['acc']),
+                                  'accuracy std': np.std(results['acc']),
+                                  'precision': np.mean(results['precision']),
+                                  'precision std': np.std(results['precision']),
+                                  'recall': np.mean(results['recall']),
+                                  'recall std': np.std(results['recall'])})
 
     with open('results/{}/{}'.format(args.dataset, filename), 'wb') as file_save:
         pickle.dump(results, file_save)

@@ -3,6 +3,7 @@ import os
 import pickle
 
 import warnings
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from time import time
@@ -45,12 +46,9 @@ def topological_features(_args, _edges, _non_edges):
 
     degrees = np.array(list(dict(graph_hic.degree()).values()))
 
-
     betweenness = np.array(list(nx.betweenness_centrality(graph_hic, normalized=True).values()))
 
-
     clustering = np.array(list(nx.clustering(graph_hic).values()))
-
 
     node_embs = np.vstack((degrees, betweenness, clustering)).T
     np.save('embeddings/embeddings_chr_{:02d}_{:02d}_topological'.format(_args.chr_src, _args.chr_tgt), node_embs)
@@ -76,8 +74,8 @@ def topological_features(_args, _edges, _non_edges):
                                     clustering_sub_pos, clustering_avg_pos))
 
         parameters_neg = np.vstack((degrees_sub_neg, degrees_avg_neg,
-                                betweenness_sub_neg, betweenness_avg_neg,
-                                clustering_sub_neg, clustering_avg_neg))
+                                    betweenness_sub_neg, betweenness_avg_neg,
+                                    clustering_sub_neg, clustering_avg_neg))
 
     if _args.edge_features:
         shortest_path_lengths_pos = np.array(list(
@@ -99,7 +97,7 @@ def topological_features(_args, _edges, _non_edges):
         parameters_neg = np.vstack((parameters_neg, _non_edges.T))
 
     end = time()
-    print("Time for feature generation", end-start)
+    print("Time for feature generation", end - start)
 
     X = np.hstack((parameters_pos, parameters_neg)).T
     print(X.shape)
@@ -117,15 +115,15 @@ if __name__ == '__main__':
     parser.add_argument('--chr-tgt', type=int, default=None)
     parser.add_argument('--n-iter', type=int, default=1)
     parser.add_argument('--n-splits', type=int, default=5)
-    parser.add_argument('--embedding', type=str, default='es8_nw10_wl80_p1.0_q1.0')
+    parser.add_argument('--embedding', type=str, default='es8_nw142_wl184_p3.0_q4.0')
     parser.add_argument('--method', type=str, default='node2vec')
-    parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_1_1_50000_50000_0.9073'])
+    parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_all_50000_50000_primary_observed_NONE_all_100000_100000'])
     parser.add_argument('--coexpression', type=str, nargs='*', default=None)
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
-    parser.add_argument('--aggregator', default=['l2norm'], nargs='*')
+    parser.add_argument('--aggregator', default=['nwl2'], nargs='*')
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
-    parser.add_argument('--full-interactions', default=False, action='store_true')
+    parser.add_argument('--full-interactions', default=True, action='store_true')
     parser.add_argument('--full-coexpression', default=False, action='store_true')
     parser.add_argument('--zero-median', default=False, action='store_true')
     parser.add_argument('--threshold', type=float, default=0.4113)
@@ -146,7 +144,7 @@ if __name__ == '__main__':
         chrs = 'all'
     else:
         chrs = '{:02d}_{:02d}'.format(args.chr_src, args.chr_tgt)
-        #chrs = 'all'
+        # chrs = 'all'
 
     if type(args.aggregator) == list:
         args.aggregator = '_'.join(args.aggregator)
@@ -154,12 +152,11 @@ if __name__ == '__main__':
     args.embedding = [(name + '_' + args.embedding) for name in args.name]
     coexpression = sps.load_npz(
         'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs, args.threshold))
-    #coexpression = coexpression.todense()
+    # coexpression = coexpression.todense()
     degrees = np.ravel((coexpression == 1).sum(axis=0))
-    #coexpression[degrees < 2, :] = 0
-    #coexpression[:, degrees < 2] = 0
+    # coexpression[degrees < 2, :] = 0
+    # coexpression[:, degrees < 2] = 0
     coexpression = sps.triu(coexpression, k=1).tocsr()
-
 
     chr_sizes = np.load(
         '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
@@ -180,8 +177,10 @@ if __name__ == '__main__':
 
         coexpression = coexpression[start_src:end_src, start_tgt:end_tgt]
 
-        disconnected_nodes_src = disconnected_nodes[(disconnected_nodes >= start_src) & (disconnected_nodes < end_src)] - start_src
-        disconnected_nodes_tgt = disconnected_nodes[(disconnected_nodes >= start_tgt) & (disconnected_nodes < end_tgt)] - start_tgt
+        disconnected_nodes_src = disconnected_nodes[
+                                     (disconnected_nodes >= start_src) & (disconnected_nodes < end_src)] - start_src
+        disconnected_nodes_tgt = disconnected_nodes[
+                                     (disconnected_nodes >= start_tgt) & (disconnected_nodes < end_tgt)] - start_tgt
     else:
         disconnected_nodes_src = disconnected_nodes
         disconnected_nodes_tgt = disconnected_nodes
@@ -230,25 +229,40 @@ if __name__ == '__main__':
     else:
         if args.method == 'random':
             embeddings = np.random.rand(n_nodes, 8)
-            #embeddings = np.ones((n_nodes, 8))
+            # embeddings = np.ones((n_nodes, 8))
         else:
             embeddings = np.hstack([np.load(
                 './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, embedding_name)) for embedding_name in
                 args.embedding])
-        #ToDo: remove
-        #embeddings_src = embeddings[:, :8]
-        #embeddings_tgt = embeddings[:, 8:]
+        # ToDo: remove
+        # embeddings_src = embeddings[:, :8]
+        # embeddings_tgt = embeddings[:, 8:]
         embeddings_src = embeddings
         embeddings_tgt = embeddings
 
+        adj = np.load(
+            'data/{}/{}/{}_{}.npy'.format(args.dataset, args.folder, args.folder, args.name[0]))
+        np.fill_diagonal(adj, 1)
+
+        emb_neigh = np.empty((adj.shape[0], 8))
+
+        for i in range(adj.shape[0]):
+            if i in disconnected_nodes:
+                continue
+            neighbors = np.where(adj[i] == 1)[0]
+            emb_neigh[i, :] = np.sum(embeddings[neighbors], axis=0) / neighbors.shape[0]
 
         pos_features = None
         neg_features = None
+        if args.method == 'line2vec':
+            with open('/home/varrone/Repo/line2vec/data/MCF7/edge_map.pkl', 'rb') as file_load:
+                edge_map = pickle.load(file_load)
+                #pos_features =
         if 'hadamard' in args.aggregator:
-            pos_features = embeddings_src[edges[:, 0]]*embeddings_tgt[edges[:, 1]]
-            neg_features = embeddings_src[non_edges[:, 0]]*embeddings_tgt[non_edges[:, 1]]
-            #pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
-            #neg_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], non_edges)))
+            pos_features = embeddings_src[edges[:, 0]] * embeddings_tgt[edges[:, 1]]
+            neg_features = embeddings_src[non_edges[:, 0]] * embeddings_tgt[non_edges[:, 1]]
+            # pos_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], edges)))
+            # neg_features = np.array(list(map(lambda edge: embeddings[edge[0]] * embeddings[edge[1]], non_edges)))
         if 'avg' in args.aggregator:
             pos_features_avg = np.array(
                 list(map(lambda edge: np.mean((embeddings_src[edge[0]], embeddings_tgt[edge[1]]), axis=0), edges)))
@@ -278,18 +292,44 @@ if __name__ == '__main__':
             else:
                 pos_features = np.hstack((pos_features, pos_features_l2))
                 neg_features = np.hstack((neg_features, neg_features_l2))
-        if 'nwl2' in args.aggregator:
-
-
-
-            pos_features_l2 = np.power(embeddings_src[edges[:, 0]] - embeddings_tgt[edges[:, 1]], 2)
-            neg_features_l2 = np.power(embeddings_src[non_edges[:, 0]] - embeddings_tgt[non_edges[:, 1]], 2)
+        if 'nwhad' in args.aggregator:
+            pos_features_nwhad = emb_neigh[edges[:, 0]] * emb_neigh[edges[:, 1]]
+            neg_features_nwhad = emb_neigh[non_edges[:, 0]] * emb_neigh[non_edges[:, 1]]
             if pos_features is None or neg_features is None:
-                pos_features = pos_features_l2
-                neg_features = neg_features_l2
+                pos_features = pos_features_nwhad
+                neg_features = neg_features_nwhad
             else:
-                pos_features = np.hstack((pos_features, pos_features_l2))
-                neg_features = np.hstack((neg_features, neg_features_l2))
+                pos_features = np.hstack((pos_features, pos_features_nwhad))
+                neg_features = np.hstack((neg_features, neg_features_nwhad))
+        if 'nwavg' in args.aggregator:
+            pos_features_avg = np.array(
+                list(map(lambda edge: np.mean((emb_neigh[edge[0]], emb_neigh[edge[1]]), axis=0), edges)))
+            neg_features_avg = np.array(
+                list(map(lambda edge: np.mean((emb_neigh[edge[0]], emb_neigh[edge[1]]), axis=0), non_edges)))
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_avg
+                neg_features = neg_features_avg
+            else:
+                pos_features = np.hstack((pos_features, pos_features_avg))
+                neg_features = np.hstack((neg_features, neg_features_avg))
+        if 'nwl1' in args.aggregator:
+            pos_features_nwl1 = np.abs(emb_neigh[edges[:, 0]] - emb_neigh[edges[:, 1]])
+            neg_features_nwl1 = np.abs(emb_neigh[non_edges[:, 0]] - emb_neigh[non_edges[:, 1]])
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_nwl1
+                neg_features = neg_features_nwl1
+            else:
+                pos_features = np.hstack((pos_features, pos_features_nwl1))
+                neg_features = np.hstack((neg_features, neg_features_nwl1))
+        if 'nwl2' in args.aggregator:
+            pos_features_nwl2 = np.power(emb_neigh[edges[:, 0]] - emb_neigh[edges[:, 1]], 2)
+            neg_features_nwl2 = np.power(emb_neigh[non_edges[:, 0]] - emb_neigh[non_edges[:, 1]], 2)
+            if pos_features is None or neg_features is None:
+                pos_features = pos_features_nwl2
+                neg_features = neg_features_nwl2
+            else:
+                pos_features = np.hstack((pos_features, pos_features_nwl2))
+                neg_features = np.hstack((neg_features, neg_features_nwl2))
         if 'concat' in args.aggregator:
             pos_features_cat = np.hstack((embeddings[edges[:, 0]], embeddings[edges[:, 1]]))
             neg_features_cat = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))
@@ -314,17 +354,16 @@ if __name__ == '__main__':
 
     if args.method == 'topological':
         filename = 'chr_{:02d}/{}_{}_{}_{}{}.pkl'.format(args.chr_src, args.classifier,
-                                                                 args.method, '_'.join(args.name), args.aggregator,
-                                                                 '_zero_median' if args.zero_median else '')
+                                                         args.method, '_'.join(args.name), args.aggregator,
+                                                         '_zero_median' if args.zero_median else '')
     else:
         filename = 'chr_{:02d}/{}_{}_{}_{}.pkl'.format(args.chr_src,
-                                                                args.classifier, args.method,
-                                                                '_'.join(args.embedding),
-                                                                args.aggregator)
+                                                       args.classifier, args.method,
+                                                       '_'.join(args.embedding),
+                                                       args.aggregator)
 
     with open('results/{}/{}'.format(args.dataset, filename), 'wb') as file_save:
         pickle.dump(results, file_save)
-
 
     print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
           np.mean(results['f1']),

@@ -2,10 +2,10 @@ import argparse
 import hashlib
 import os
 import pickle
+import warnings
+from collections import defaultdict
 from time import time
 
-
-import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import networkx as nx
@@ -120,17 +120,20 @@ if __name__ == '__main__':
     parser.add_argument('--n-splits', type=int, default=5)
     parser.add_argument('--method', type=str, default='node2vec',
                         choices=['random', 'distance', 'topological', 'svd', 'node2vec'])
+    parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default='KR')
+    parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
+
 
     # ToDo: handle primary, observed, KR
     # parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_all_50000_50000_0.9073'])
     parser.add_argument('--resolutions', type=int, nargs='*', default=[50000])
     parser.add_argument('--windows', type=int, nargs='*', default=[50000])
-    parser.add_argument('--hic-thrs', type=float, nargs='*', default=[0.9073])
+    parser.add_argument('--hic-thrs', type=str, nargs='*', default=[0.9073])
 
     parser.add_argument('--coexp-features', default=False, action='store_true')
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
-    parser.add_argument('--aggregator', nargs='*', default=[None])
+    parser.add_argument('--aggregator', nargs='*', default=['nwavg'])
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
     parser.add_argument('--full-interactions', default=False, action='store_true')
     parser.add_argument('--full-coexpression', default=False, action='store_true')
@@ -170,7 +173,7 @@ if __name__ == '__main__':
         chrs_interactions = '{}_{}'.format(args.chr_src, args.chr_tgt)
 
     # ToDo: add constraint that resolutions, windows and thresholds have to have the same length
-    args.interactions = ['primary_observed_KR_{}_{}_{}_{}'.format(chrs_interactions, resolution, window, threshold) for
+    args.interactions = ['primary_{}_{}_{}_{}_{}_{}'.format(args.type, args.norm, chrs_interactions, resolution, window, threshold) for
                          resolution, window, threshold in zip(args.resolutions, args.windows, args.hic_thrs)]
 
     args.aggregator = '_'.join(args.aggregator)
@@ -183,7 +186,7 @@ if __name__ == '__main__':
     else:
         args.folder = 'interactions'
         args.name = args.interactions
-        experiment_id = '{}_{}_{}_{}_{}_{}_'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thr, args.method,
+        experiment_id = '{}_{}_{}_{}_{}_{}_{}_{}_'.format(args.dataset, args.type, args.norm, args.classifier, args.n_splits, args.coexp_thr, args.method,
                                                  args.embedding)
         experiment_id += '_'.join(['{}_{}_{}'.format(resolution, window, threshold) for resolution, window, threshold in
                                    zip(args.resolutions, args.windows, args.hic_thrs)])
@@ -195,157 +198,6 @@ if __name__ == '__main__':
     id_hash = str(int(hashlib.sha1(experiment_id.encode()).hexdigest(), 16) % (10 ** 8))
 
     print(id_hash)
-
-    if args.wandb:
-        wandb.init(project="coexp-inference-models")
-        wandb.config.update({'id': id_hash,
-                             'dataset': args.dataset,
-                             'fold': args.n_splits,
-                             'windows': '_'.join(map(str, args.windows)),
-                             'chr src': args.chr_src,
-                             'chr tgt': args.chr_tgt,
-                             'resolutions': '_'.join(map(str, args.resolutions)),
-                             'hic thresholds': '_'.join(map(str, args.hic_thrs)),
-                             'coexp threshold': args.coexp_thr,
-                             'full interactions': args.full_interactions,
-                             'full coexpression': args.full_coexpression,
-                             'embedding method': args.method,
-                             'aggregator': args.aggregator,
-                             'classifier': args.classifier})
-
-    coexpression = sps.load_npz(
-        'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs_coexp, args.coexp_thr))
-
-    degrees = np.ravel((coexpression == 1).sum(axis=0))
-    coexpression = sps.triu(coexpression, k=1).tocsr()
-
-    chr_sizes = np.load(
-        '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
-
-    disconnected_nodes = np.array([], dtype=int)
-    for name in args.name:
-        disconnected_nodes_single = np.load(
-            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
-                args.dataset, name))
-        disconnected_nodes = np.union1d(disconnected_nodes, disconnected_nodes_single)
-
-    if args.full_interactions and not args.full_coexpression:
-        start_src = int(np.sum(chr_sizes[:args.chr_src]))
-        end_src = int(start_src + chr_sizes[args.chr_src])
-
-        start_tgt = int(np.sum(chr_sizes[:args.chr_tgt]))
-        end_tgt = int(start_tgt + chr_sizes[args.chr_tgt])
-
-        coexpression = coexpression[start_src:end_src, start_tgt:end_tgt]
-
-        disconnected_nodes_src = disconnected_nodes[
-                                     (disconnected_nodes >= start_src) & (disconnected_nodes < end_src)] - start_src
-        disconnected_nodes_tgt = disconnected_nodes[
-                                     (disconnected_nodes >= start_tgt) & (disconnected_nodes < end_tgt)] - start_tgt
-    else:
-        disconnected_nodes_src = disconnected_nodes
-        disconnected_nodes_tgt = disconnected_nodes
-
-    print("N. disconnected nodes:", len(disconnected_nodes_src))
-    coexpression[disconnected_nodes_src] = 0
-    coexpression[:, disconnected_nodes_tgt] = 0
-
-    edges = np.array(np.argwhere(coexpression == 1))
-    n_edges = edges.shape[0]
-
-    n_nodes = coexpression.shape[0]
-    edges_nodes = np.unique(edges)
-    non_nodes = np.setdiff1d(np.arange(n_nodes), edges_nodes)
-
-    print("N. non nodes:", non_nodes.shape[0])
-
-    coexpression_neg = coexpression.copy()
-
-    coexpression_neg[non_nodes, :] = 0
-    coexpression_neg[:, non_nodes] = 0
-    non_edges = np.array(np.argwhere(coexpression_neg == -1))
-
-    non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
-    n_non_edges = non_edges.shape[0]
-
-    n_nodes = coexpression.shape[0]
-    if args.method == 'topological':
-        X = topological_features(args, edges, non_edges)
-    elif args.method == 'ids':
-        X = np.vstack((edges, non_edges))
-    elif args.method == 'distance':
-        gene_info = pd.read_csv(
-            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_{:02d}_rna.csv'.format(
-                args.dataset, args.dataset, args.chr_src))
-
-        pos_distances = np.abs(gene_info.iloc[edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
-                               gene_info.iloc[edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
-
-        neg_distances = np.abs(gene_info.iloc[non_edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
-                               gene_info.iloc[non_edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
-
-        pos_features = pos_distances[:, None]
-        neg_features = neg_distances[:, None]
-        X = np.vstack((pos_features, neg_features))
-    else:
-        if args.method == 'random':
-            embeddings = np.random.rand(n_nodes, 8)
-            # embeddings = np.ones((n_nodes, 8))
-        else:
-            embeddings = np.hstack([np.load(
-                './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, embedding_name)) for embedding_name in
-                args.embedding])
-
-        pos_features = None
-        neg_features = None
-        if 'hadamard' in args.aggregator:
-            pos_features = embeddings[edges[:, 0]] * embeddings[edges[:, 1]]
-            neg_features = embeddings[non_edges[:, 0]] * embeddings[non_edges[:, 1]]
-        if 'avg' in args.aggregator:
-            pos_features_avg = np.array(
-                list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), edges)))
-            neg_features_avg = np.array(
-                list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), non_edges)))
-            if pos_features is None or neg_features is None:
-                pos_features = pos_features_avg
-                neg_features = neg_features_avg
-            else:
-                pos_features = np.hstack((pos_features, pos_features_avg))
-                neg_features = np.hstack((neg_features, neg_features_avg))
-
-        if 'sub' in args.aggregator:
-            pos_features_sub = np.abs(embeddings[edges[:, 0]] - embeddings[edges[:, 1]])
-            neg_features_sub = np.abs(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]])
-            if pos_features is None or neg_features is None:
-                pos_features = pos_features_sub
-                neg_features = neg_features_sub
-            else:
-                pos_features = np.hstack((pos_features, pos_features_sub))
-                neg_features = np.hstack((neg_features, neg_features_sub))
-        if 'l2' in args.aggregator:
-            pos_features_l2 = np.power(embeddings[edges[:, 0]] - embeddings[edges[:, 1]], 2)
-            neg_features_l2 = np.power(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]], 2)
-            if pos_features is None or neg_features is None:
-                pos_features = pos_features_l2
-                neg_features = neg_features_l2
-            else:
-                pos_features = np.hstack((pos_features, pos_features_l2))
-                neg_features = np.hstack((neg_features, neg_features_l2))
-        if 'concat' in args.aggregator:
-            pos_features_cat = np.hstack((embeddings[edges[:, 0]], embeddings[edges[:, 1]]))
-            neg_features_cat = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))
-            if pos_features is None or neg_features is None:
-                pos_features = pos_features_cat
-                neg_features = neg_features_cat
-            else:
-                pos_features = np.hstack((pos_features, pos_features_cat))
-                neg_features = np.hstack((neg_features, neg_features_cat))
-        X = np.vstack((pos_features, neg_features))
-    y = np.hstack((np.ones(n_edges), np.zeros(n_non_edges)))
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
-    print(X_train.shape)
-    results = evaluate_embedding(X_train, y_train, args.classifier, n_iter=args.n_iter, verbose=1,
-                                 clf_params={'n_estimators': 100}, n_splits=args.n_splits)
 
     if not os.path.exists('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src)):
         os.makedirs('results/{}/chr_{:02d}'.format(args.dataset, args.chr_src))
@@ -362,20 +214,243 @@ if __name__ == '__main__':
                                                        args.classifier, args.method,
                                                        '_'.join(args.embedding),
                                                        args.aggregator)
+    if not os.path.exists('results/{}/{}'.format(args.dataset, filename)):
 
-    for key in results.keys():
-        wandb.run.summary.update({'accuracy': np.mean(results['acc']),
-                                  'accuracy std': np.std(results['acc']),
-                                  'precision': np.mean(results['precision']),
-                                  'precision std': np.std(results['precision']),
-                                  'recall': np.mean(results['recall']),
-                                  'recall std': np.std(results['recall'])})
+        coexpression = sps.load_npz(
+            'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs_coexp, args.coexp_thr))
 
-    with open('results/{}/{}'.format(args.dataset, filename), 'wb') as file_save:
-        pickle.dump(results, file_save)
+        degrees = np.ravel((coexpression == 1).sum(axis=0))
+        coexpression = sps.triu(coexpression, k=1).tocsr()
 
-    wandb.save('results/{}/{}'.format(args.dataset, filename))
+        chr_sizes = np.load(
+            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
 
-    print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
-          np.mean(results['f1']),
-          "- Mean Precision:", np.mean(results['precision']), "- Mean Recall", np.mean(results['recall']))
+        disconnected_nodes = np.array([], dtype=int)
+        for name in args.name:
+            disconnected_nodes_single = np.load(
+                '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
+                    args.dataset, name))
+            disconnected_nodes = np.union1d(disconnected_nodes, disconnected_nodes_single)
+
+        if args.full_interactions and not args.full_coexpression:
+            start_src = int(np.sum(chr_sizes[:args.chr_src]))
+            end_src = int(start_src + chr_sizes[args.chr_src])
+
+            start_tgt = int(np.sum(chr_sizes[:args.chr_tgt]))
+            end_tgt = int(start_tgt + chr_sizes[args.chr_tgt])
+
+            coexpression = coexpression[start_src:end_src, start_tgt:end_tgt]
+
+            disconnected_nodes_src = disconnected_nodes[
+                                         (disconnected_nodes >= start_src) & (disconnected_nodes < end_src)] - start_src
+            disconnected_nodes_tgt = disconnected_nodes[
+                                         (disconnected_nodes >= start_tgt) & (disconnected_nodes < end_tgt)] - start_tgt
+        else:
+            disconnected_nodes_src = disconnected_nodes
+            disconnected_nodes_tgt = disconnected_nodes
+
+        print("N. disconnected nodes:", len(disconnected_nodes_src))
+        coexpression[disconnected_nodes_src] = 0
+        coexpression[:, disconnected_nodes_tgt] = 0
+
+        edges = np.array(np.argwhere(coexpression == 1))
+        n_edges = edges.shape[0]
+
+        n_nodes = coexpression.shape[0]
+        edges_nodes = np.unique(edges)
+        non_nodes = np.setdiff1d(np.arange(n_nodes), edges_nodes)
+
+        print("N. non nodes:", non_nodes.shape[0])
+
+        coexpression_neg = coexpression.copy()
+
+        coexpression_neg[non_nodes, :] = 0
+        coexpression_neg[:, non_nodes] = 0
+        non_edges = np.array(np.argwhere(coexpression_neg == -1))
+
+        non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
+        n_non_edges = non_edges.shape[0]
+
+        n_nodes = coexpression.shape[0]
+
+
+        if args.wandb:
+            wandb.init(project="coexp-inference-models")
+            wandb.config.update({'id': id_hash,
+                                 'dataset': args.dataset,
+                                 'fold': args.n_splits,
+                                 'windows': '_'.join(map(str, args.windows)),
+                                 'chr src': args.chr_src,
+                                 'chr tgt': args.chr_tgt,
+                                 'resolutions': '_'.join(map(str, args.resolutions)),
+                                 'hic thresholds': '_'.join(map(str, args.hic_thrs)),
+                                 'coexp threshold': args.coexp_thr,
+                                 'full interactions': args.full_interactions,
+                                 'full coexpression': args.full_coexpression,
+                                 'embedding method': args.method,
+                                 'aggregator': args.aggregator,
+                                 'classifier': args.classifier,
+                                 'interactions': args.interactions,
+                                 'embeddings size': args.emb_size})
+
+        if args.method == 'topological':
+            X = topological_features(args, edges, non_edges)
+        elif args.method == 'ids':
+            X = np.vstack((edges, non_edges))
+        elif args.method == 'distance':
+            gene_info = pd.read_csv(
+                '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_{:02d}_rna.csv'.format(
+                    args.dataset, args.dataset, args.chr_src))
+
+            pos_distances = np.abs(gene_info.iloc[edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
+                                   gene_info.iloc[edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
+
+            neg_distances = np.abs(gene_info.iloc[non_edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
+                                   gene_info.iloc[non_edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
+
+            pos_features = pos_distances[:, None]
+            neg_features = neg_distances[:, None]
+            X = np.vstack((pos_features, neg_features))
+        else:
+            if args.method == 'random':
+                embeddings = np.random.rand(n_nodes, args.emb_size)
+                # embeddings = np.ones((n_nodes, 8))
+            else:
+                embeddings = np.hstack([np.load(
+                    './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, embedding_name)) for embedding_name in
+                    args.embedding])
+
+            adj = sps.load_npz(
+                'data/{}/{}/{}_{}.npz'.format(args.dataset, args.folder, args.folder, args.name[0]))
+            adj = adj.todense()
+            np.fill_diagonal(adj, 1)
+
+            emb_neigh = np.empty((adj.shape[0], embeddings.shape[1]))
+
+            for i in range(adj.shape[0]):
+                if i in disconnected_nodes:
+                    continue
+                neighbors = np.where(adj[i] == 1)[0]
+                emb_neigh[i, :] = np.sum(embeddings[neighbors], axis=0) / neighbors.shape[0]
+
+            pos_features = None
+            neg_features = None
+            if 'hadamard' in args.aggregator:
+                pos_features = embeddings[edges[:, 0]] * embeddings[edges[:, 1]]
+                neg_features = embeddings[non_edges[:, 0]] * embeddings[non_edges[:, 1]]
+            if 'avg' in args.aggregator and 'nwavg' not in args.aggregator:
+                pos_features_avg = np.array(
+                    list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), edges)))
+                neg_features_avg = np.array(
+                    list(map(lambda edge: np.mean((embeddings[edge[0]], embeddings[edge[1]]), axis=0), non_edges)))
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_avg
+                    neg_features = neg_features_avg
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_avg))
+                    neg_features = np.hstack((neg_features, neg_features_avg))
+            if 'sub' in args.aggregator and 'nwsub' not in args.aggregator:
+                pos_features_sub = np.abs(embeddings[edges[:, 0]] - embeddings[edges[:, 1]])
+                neg_features_sub = np.abs(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]])
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_sub
+                    neg_features = neg_features_sub
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_sub))
+                    neg_features = np.hstack((neg_features, neg_features_sub))
+            if 'l2' in args.aggregator and 'nwl2' not in args.aggregator:
+                pos_features_l2 = np.power(embeddings[edges[:, 0]] - embeddings[edges[:, 1]], 2)
+                neg_features_l2 = np.power(embeddings[non_edges[:, 0]] - embeddings[non_edges[:, 1]], 2)
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_l2
+                    neg_features = neg_features_l2
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_l2))
+                    neg_features = np.hstack((neg_features, neg_features_l2))
+            if 'nwhad' in args.aggregator:
+                pos_features_nwhad = emb_neigh[edges[:, 0]] * emb_neigh[edges[:, 1]]
+                neg_features_nwhad = emb_neigh[non_edges[:, 0]] * emb_neigh[non_edges[:, 1]]
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_nwhad
+                    neg_features = neg_features_nwhad
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_nwhad))
+                    neg_features = np.hstack((neg_features, neg_features_nwhad))
+            if 'nwavg' in args.aggregator:
+                pos_features_nwavg = np.array(
+                    list(map(lambda edge: np.mean((emb_neigh[edge[0]], emb_neigh[edge[1]]), axis=0), edges)))
+                neg_features_nwavg = np.array(
+                    list(map(lambda edge: np.mean((emb_neigh[edge[0]], emb_neigh[edge[1]]), axis=0), non_edges)))
+
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_nwavg
+                    neg_features = neg_features_nwavg
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_nwavg))
+                    neg_features = np.hstack((neg_features, neg_features_nwavg))
+
+            if 'nwl1' in args.aggregator:
+                pos_features_nwl1 = np.abs(emb_neigh[edges[:, 0]] - emb_neigh[edges[:, 1]])
+                neg_features_nwl1 = np.abs(emb_neigh[non_edges[:, 0]] - emb_neigh[non_edges[:, 1]])
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_nwl1
+                    neg_features = neg_features_nwl1
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_nwl1))
+                    neg_features = np.hstack((neg_features, neg_features_nwl1))
+            if 'nwl2' in args.aggregator:
+                pos_features_nwl2 = np.power(emb_neigh[edges[:, 0]] - emb_neigh[edges[:, 1]], 2)
+                neg_features_nwl2 = np.power(emb_neigh[non_edges[:, 0]] - emb_neigh[non_edges[:, 1]], 2)
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_nwl2
+                    neg_features = neg_features_nwl2
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_nwl2))
+                    neg_features = np.hstack((neg_features, neg_features_nwl2))
+            if 'concat' in args.aggregator and 'nwcat' not in args.aggregator:
+                pos_features_cat = np.hstack((embeddings[edges[:, 0]], embeddings[edges[:, 1]]))
+                neg_features_cat = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_cat
+                    neg_features = neg_features_cat
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_cat))
+                    neg_features = np.hstack((neg_features, neg_features_cat))
+            if 'nwcat' in args.aggregator:
+                pos_features_cat = np.hstack((emb_neigh[edges[:, 0]], emb_neigh[edges[:, 1]]))
+                neg_features_cat = np.hstack((emb_neigh[non_edges[:, 0]], emb_neigh[non_edges[:, 1]]))
+                if pos_features is None or neg_features is None:
+                    pos_features = pos_features_cat
+                    neg_features = neg_features_cat
+                else:
+                    pos_features = np.hstack((pos_features, pos_features_cat))
+                    neg_features = np.hstack((neg_features, neg_features_cat))
+            X = np.vstack((pos_features, neg_features))
+        y = np.hstack((np.ones(n_edges), np.zeros(n_non_edges)))
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
+
+        results = defaultdict(list)
+        for i in range(args.n_iter):
+            results_iter = evaluate_embedding(X_train, y_train, args.classifier, n_iter=args.n_iter, verbose=1,
+                                              clf_params={'n_estimators': 100}, n_splits=args.n_splits)
+            for key in results_iter.keys():
+                results[key].extend(results_iter[key])
+
+        for key in results.keys():
+            wandb.run.summary.update({'accuracy': np.mean(results['acc']),
+                                      'accuracy std': np.std(results['acc']),
+                                      'precision': np.mean(results['precision']),
+                                      'precision std': np.std(results['precision']),
+                                      'recall': np.mean(results['recall']),
+                                      'recall std': np.std(results['recall'])})
+
+        with open('results/{}/{}'.format(args.dataset, filename), 'wb') as file_save:
+            pickle.dump(results, file_save)
+
+        wandb.save('results/{}/{}'.format(args.dataset, filename))
+
+        print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
+              np.mean(results['f1']),
+              "- Mean Precision:", np.mean(results['precision']), "- Mean Recall", np.mean(results['recall']))
+    else:
+        print('Result already computed for {}. Skipped.'.format(filename))

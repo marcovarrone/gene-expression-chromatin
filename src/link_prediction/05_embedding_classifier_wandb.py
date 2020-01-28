@@ -13,10 +13,11 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sps
 import wandb
+import pdb
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 
-from link_prediction.utils import evaluate_embedding
+from link_prediction.utils import evaluate_embedding, from_scipy_sparse_matrix
 
 
 
@@ -34,17 +35,17 @@ np.random.seed(seed)
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-os.environ["OMP_NUM_THREADS"] = "10"
-os.environ["OPENBLAS_NUM_THREADS"] = "10"
-os.environ["MKL_NUM_THREADS"] = "10"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "10"
-os.environ["NUMEXPR_NUM_THREADS"] = "10"
+os.environ["OMP_NUM_THREADS"] = "20"
+os.environ["OPENBLAS_NUM_THREADS"] = "20"
+os.environ["MKL_NUM_THREADS"] = "20"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "20"
+os.environ["NUMEXPR_NUM_THREADS"] = "20"
 
 
 def topological_features(_args, _edges, _non_edges):
-    adj_hic = np.load(
-        'data/{}/{}/{}_{}.npy'.format(_args.dataset, _args.folder, _args.folder, _args.name[0]))
-    graph_hic = nx.from_numpy_array(adj_hic)
+
+    adj_hic = sps.load_npz('data/{}/{}/{}_{}.npz'.format(_args.dataset, _args.folder, _args.folder, _args.name))
+    graph_hic = from_scipy_sparse_matrix(adj_hic)
     graph_hic = nx.convert_node_labels_to_integers(graph_hic)
 
     degrees = np.array(list(dict(graph_hic.degree()).values()))
@@ -72,13 +73,19 @@ def topological_features(_args, _edges, _non_edges):
         betweenness_sub_neg, betweenness_avg_neg = link_centrality(betweenness, _non_edges)
         clustering_sub_pos, clustering_avg_pos = link_centrality(clustering, _edges)
         clustering_sub_neg, clustering_avg_neg = link_centrality(clustering, _non_edges)
-        parameters_pos = np.vstack((degrees_sub_pos, degrees_avg_pos,
-                                    betweenness_sub_pos, betweenness_avg_pos,
-                                    clustering_sub_pos, clustering_avg_pos))
+        parameters_pos = np.vstack((degrees_sub_pos,
+                                    degrees_avg_pos,
+                                    betweenness_sub_pos,
+                                    betweenness_avg_pos,
+                                    clustering_sub_pos,
+                                    clustering_avg_pos))
 
-        parameters_neg = np.vstack((degrees_sub_neg, degrees_avg_neg,
-                                    betweenness_sub_neg, betweenness_avg_neg,
-                                    clustering_sub_neg, clustering_avg_neg))
+        parameters_neg = np.vstack((degrees_sub_neg,
+                                    degrees_avg_neg,
+                                    betweenness_sub_neg,
+                                    betweenness_avg_neg,
+                                    clustering_sub_neg,
+                                    clustering_avg_neg))
 
     if _args.edge_features:
         shortest_path_lengths_pos = np.array(list(
@@ -120,27 +127,29 @@ if __name__ == '__main__':
     parser.add_argument('--n-splits', type=int, default=5)
     parser.add_argument('--method', type=str, default='node2vec',
                         choices=['random', 'distance', 'topological', 'svd', 'node2vec'])
-    parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default='KR')
-    parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
 
 
     # ToDo: handle primary, observed, KR
     # parser.add_argument('--interactions', type=str, nargs='*', default=['primary_observed_KR_all_50000_50000_0.9073'])
     parser.add_argument('--resolutions', type=int, nargs='*', default=[50000])
     parser.add_argument('--windows', type=int, nargs='*', default=[50000])
-    parser.add_argument('--hic-thrs', type=str, nargs='*', default=[0.9073])
+    parser.add_argument('--hic-thrs', type=str, nargs='*', default=[2.74])
+    parser.add_argument('--weights', type=str, nargs='*', default=[None, None])
+    parser.add_argument('--norms', nargs='*', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default=['KR'])
+    parser.add_argument('--types', nargs='*', type=str, choices=['observed', 'oe'], default=['observed'])
 
     parser.add_argument('--coexp-features', default=False, action='store_true')
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--id-features', default=False, action='store_true')
-    parser.add_argument('--aggregator', nargs='*', default=['nwavg'])
+    parser.add_argument('--aggregator', nargs='*', default=['hadamard'])
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
     parser.add_argument('--full-interactions', default=False, action='store_true')
     parser.add_argument('--full-coexpression', default=False, action='store_true')
     parser.add_argument('--zero-median', default=False, action='store_true')
-    parser.add_argument('--coexp-thr', type=float, default=0.4113)
+    parser.add_argument('--coexp-thrs', nargs='*', type=str, default=[0.4113])
     parser.add_argument('--save-predictions', default=True, action='store_true')
-    parser.add_argument('--emb-size', type=int, default=8)
+    parser.add_argument('--emb-size', type=int, default=16)
+    parser.add_argument('--force', default=False, action='store_true')
 
     # Node2vec params
     parser.add_argument('--num-walks', type=int, default=10)
@@ -162,7 +171,7 @@ if __name__ == '__main__':
     if args.chr_tgt is None:
         args.chr_tgt = args.chr_src
 
-    if args.full_coexpression:
+    if args.full_coexpression or args.full_interactions:
         chrs_coexp = 'all'
     else:
         chrs_coexp = '{:02d}_{:02d}'.format(args.chr_src, args.chr_tgt)
@@ -173,27 +182,43 @@ if __name__ == '__main__':
         chrs_interactions = '{}_{}'.format(args.chr_src, args.chr_tgt)
 
     # ToDo: add constraint that resolutions, windows and thresholds have to have the same length
-    args.interactions = ['primary_{}_{}_{}_{}_{}_{}'.format(args.type, args.norm, chrs_interactions, resolution, window, threshold) for
-                         resolution, window, threshold in zip(args.resolutions, args.windows, args.hic_thrs)]
+    hic_files = ['primary_{}_{}'.format(type, norm) for
+                 type, norm in zip(args.types, args.norms)]
+
+    hic_preprocessings = ['{}_{}_{}{}'.format(resolution, window, threshold, ('_'+str(weight)) if weight else '') for resolution, window, threshold, weight in
+                          zip(args.resolutions, args.windows, args.hic_thrs, args.weights)]
+
+    print(hic_files)
+    print(hic_preprocessings)
+
+    args.interactions = ['{}_{}_{}'.format(file, chrs_interactions, preprocessing) for
+                         file, preprocessing in zip(hic_files, hic_preprocessings)]
+
+    interactions_no_chr = ['{}_{}'.format(file, preprocessing) for
+                           file, preprocessing in zip(hic_files, hic_preprocessings)]
+    args.interactions = '_'.join(args.interactions)
 
     args.aggregator = '_'.join(args.aggregator)
+    args.coexp_thrs = '_'.join(args.coexp_thrs)
 
     if args.coexp_features:
         args.folder = 'coexpression'
-        args.name = 'chr_{}_{}'.format(chrs_coexp, args.coexp_thr)
-        experiment_id = '{}_{}_{}_{}_{}_{}_{}'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thr, args.method,
+        args.name = 'chr_{}_{}'.format(chrs_coexp, args.coexp_thrs)
+        experiment_id = '{}_{}_{}_{}_{}_{}_{}'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thrs, args.method,
                                                    args.embedding, args.aggregator)
     else:
         args.folder = 'interactions'
         args.name = args.interactions
-        experiment_id = '{}_{}_{}_{}_{}_{}_{}_{}_'.format(args.dataset, args.type, args.norm, args.classifier, args.n_splits, args.coexp_thr, args.method,
-                                                 args.embedding)
+        experiment_id = '{}_{}_{}_{}_{}_{}_'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thrs,
+                                                    args.method, '_'.join(interactions_no_chr), args.embedding)
         experiment_id += '_'.join(['{}_{}_{}'.format(resolution, window, threshold) for resolution, window, threshold in
                                    zip(args.resolutions, args.windows, args.hic_thrs)])
         experiment_id += '_' + str(args.aggregator)
     print(experiment_id)
 
-    args.embedding = [(name + '_' + args.embedding) for name in args.name]
+    args.embedding = args.name + '_' + args.embedding
+
+    print(args.name)
 
     id_hash = str(int(hashlib.sha1(experiment_id.encode()).hexdigest(), 16) % (10 ** 8))
 
@@ -207,17 +232,18 @@ if __name__ == '__main__':
 
     if args.method == 'topological':
         filename = 'chr_{:02d}/{}_{}_{}_{}{}.pkl'.format(args.chr_src, args.classifier,
-                                                         args.method, '_'.join(args.name), args.aggregator,
+                                                         args.method, args.name, args.aggregator,
                                                          '_zero_median' if args.zero_median else '')
     else:
-        filename = 'chr_{:02d}/{}_{}_{}_{}.pkl'.format(args.chr_src,
-                                                       args.classifier, args.method,
-                                                       '_'.join(args.embedding),
-                                                       args.aggregator)
-    if not os.path.exists('results/{}/{}'.format(args.dataset, filename)):
+        if args.full_coexpression:
+            filename = 'chr_all/{}_{}_{}_{}_{}.pkl'.format(args.classifier, args.method, args.embedding, args.aggregator, '_'.join(args.coexp_thrs))
+        else:
+            filename = 'chr_{:02d}/{}_{}_{}_{}_{}.pkl'.format(args.chr_src, args.classifier, args.method, args.embedding,
+                                                           args.aggregator,  '_'.join(args.coexp_thrs))
+    if not os.path.exists('results/{}/{}'.format(args.dataset, filename)) or args.force:
 
         coexpression = sps.load_npz(
-            'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs_coexp, args.coexp_thr))
+            'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs_coexp, args.coexp_thrs))
 
         degrees = np.ravel((coexpression == 1).sum(axis=0))
         coexpression = sps.triu(coexpression, k=1).tocsr()
@@ -225,12 +251,9 @@ if __name__ == '__main__':
         chr_sizes = np.load(
             '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/chr_sizes.npy'.format(args.dataset))
 
-        disconnected_nodes = np.array([], dtype=int)
-        for name in args.name:
-            disconnected_nodes_single = np.load(
-                '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
-                    args.dataset, name))
-            disconnected_nodes = np.union1d(disconnected_nodes, disconnected_nodes_single)
+        disconnected_nodes = np.load(
+            '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/disconnected_nodes/{}.npy'.format(
+                args.dataset, args.name))
 
         if args.full_interactions and not args.full_coexpression:
             start_src = int(np.sum(chr_sizes[:args.chr_src]))
@@ -261,12 +284,14 @@ if __name__ == '__main__':
         non_nodes = np.setdiff1d(np.arange(n_nodes), edges_nodes)
 
         print("N. non nodes:", non_nodes.shape[0])
-
         coexpression_neg = coexpression.copy()
 
         coexpression_neg[non_nodes, :] = 0
         coexpression_neg[:, non_nodes] = 0
-        non_edges = np.array(np.argwhere(coexpression_neg == -1))
+        if len(args.coexp_thrs) > 1:
+            non_edges = np.array(np.argwhere(coexpression_neg == 0))
+        else:
+            non_edges = np.array(np.argwhere(coexpression_neg == -1))
 
         non_edges = non_edges[np.random.choice(non_edges.shape[0], n_edges, replace=False)]
         n_non_edges = non_edges.shape[0]
@@ -284,7 +309,7 @@ if __name__ == '__main__':
                                  'chr tgt': args.chr_tgt,
                                  'resolutions': '_'.join(map(str, args.resolutions)),
                                  'hic thresholds': '_'.join(map(str, args.hic_thrs)),
-                                 'coexp threshold': args.coexp_thr,
+                                 'coexp threshold': args.coexp_thrs,
                                  'full interactions': args.full_interactions,
                                  'full coexpression': args.full_coexpression,
                                  'embedding method': args.method,
@@ -298,9 +323,14 @@ if __name__ == '__main__':
         elif args.method == 'ids':
             X = np.vstack((edges, non_edges))
         elif args.method == 'distance':
-            gene_info = pd.read_csv(
-                '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_{:02d}_rna.csv'.format(
-                    args.dataset, args.dataset, args.chr_src))
+            if args.full_interactions:
+                gene_info = pd.read_csv(
+                    '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_all_rna.csv'.format(
+                        args.dataset, args.dataset))
+            else:
+                gene_info = pd.read_csv(
+                    '/home/varrone/Prj/gene-expression-chromatin/src/coexp_hic_corr/data/{}/rna/{}_chr_{:02d}_rna.csv'.format(
+                        args.dataset, args.dataset, args.chr_src))
 
             pos_distances = np.abs(gene_info.iloc[edges[:, 0]]['Transcription start site (TSS)'].to_numpy() -
                                    gene_info.iloc[edges[:, 1]]['Transcription start site (TSS)'].to_numpy())
@@ -316,12 +346,12 @@ if __name__ == '__main__':
                 embeddings = np.random.rand(n_nodes, args.emb_size)
                 # embeddings = np.ones((n_nodes, 8))
             else:
-                embeddings = np.hstack([np.load(
-                    './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, embedding_name)) for embedding_name in
-                    args.embedding])
+                print(args.embedding)
+                embeddings = np.load(
+                    './embeddings/{}/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
 
             adj = sps.load_npz(
-                'data/{}/{}/{}_{}.npz'.format(args.dataset, args.folder, args.folder, args.name[0]))
+                'data/{}/{}/{}_{}.npz'.format(args.dataset, args.folder, args.folder, args.name))
             adj = adj.todense()
             np.fill_diagonal(adj, 1)
 
@@ -332,6 +362,9 @@ if __name__ == '__main__':
                     continue
                 neighbors = np.where(adj[i] == 1)[0]
                 emb_neigh[i, :] = np.sum(embeddings[neighbors], axis=0) / neighbors.shape[0]
+
+            if args.full_interactions and not args.full_coexpression:
+                embeddings = embeddings[start_src:end_src]
 
             pos_features = None
             neg_features = None

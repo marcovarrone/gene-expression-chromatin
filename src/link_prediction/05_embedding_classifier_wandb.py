@@ -143,10 +143,10 @@ if __name__ == '__main__':
     parser.add_argument('--id-features', default=False, action='store_true')
     parser.add_argument('--aggregator', nargs='*', default=['hadamard'])
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'mlp_2', 'rf'])
-    parser.add_argument('--full-interactions', default=False, action='store_true')
-    parser.add_argument('--full-coexpression', default=False, action='store_true')
+    parser.add_argument('--full-interactions', default=True, action='store_true')
+    parser.add_argument('--full-coexpression', default=True, action='store_true')
     parser.add_argument('--zero-median', default=False, action='store_true')
-    parser.add_argument('--coexp-thrs', nargs='*', type=str, default=[0.4113])
+    parser.add_argument('--coexp-thrs', nargs='*', type=str, default=['0.4113'])
     parser.add_argument('--save-predictions', default=True, action='store_true')
     parser.add_argument('--emb-size', type=int, default=16)
     parser.add_argument('--force', default=False, action='store_true')
@@ -199,17 +199,17 @@ if __name__ == '__main__':
     args.interactions = '_'.join(args.interactions)
 
     args.aggregator = '_'.join(args.aggregator)
-    args.coexp_thrs = '_'.join(args.coexp_thrs)
+    coexp_thrs = '_'.join(args.coexp_thrs)
 
     if args.coexp_features:
         args.folder = 'coexpression'
-        args.name = 'chr_{}_{}'.format(chrs_coexp, args.coexp_thrs)
-        experiment_id = '{}_{}_{}_{}_{}_{}_{}'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thrs, args.method,
+        args.name = 'chr_{}_{}'.format(chrs_coexp, coexp_thrs)
+        experiment_id = '{}_{}_{}_{}_{}_{}_{}'.format(args.dataset, args.classifier, args.n_splits, coexp_thrs, args.method,
                                                    args.embedding, args.aggregator)
     else:
         args.folder = 'interactions'
         args.name = args.interactions
-        experiment_id = '{}_{}_{}_{}_{}_{}_'.format(args.dataset, args.classifier, args.n_splits, args.coexp_thrs,
+        experiment_id = '{}_{}_{}_{}_{}_{}_'.format(args.dataset, args.classifier, args.n_splits, coexp_thrs,
                                                     args.method, '_'.join(interactions_no_chr), args.embedding)
         experiment_id += '_'.join(['{}_{}_{}'.format(resolution, window, threshold) for resolution, window, threshold in
                                    zip(args.resolutions, args.windows, args.hic_thrs)])
@@ -236,14 +236,14 @@ if __name__ == '__main__':
                                                          '_zero_median' if args.zero_median else '')
     else:
         if args.full_coexpression:
-            filename = 'chr_all/{}_{}_{}_{}_{}.pkl'.format(args.classifier, args.method, args.embedding, args.aggregator, '_'.join(args.coexp_thrs))
+            filename = 'chr_all/{}_{}_{}_{}_{}.pkl'.format(args.classifier, args.method, args.embedding, args.aggregator, coexp_thrs)
         else:
             filename = 'chr_{:02d}/{}_{}_{}_{}_{}.pkl'.format(args.chr_src, args.classifier, args.method, args.embedding,
-                                                           args.aggregator,  '_'.join(args.coexp_thrs))
+                                                           args.aggregator,  coexp_thrs)
     if not os.path.exists('results/{}/{}'.format(args.dataset, filename)) or args.force:
 
         coexpression = sps.load_npz(
-            'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs_coexp, args.coexp_thrs))
+            'data/{}/coexpression/coexpression_chr_{}_{}.npz'.format(args.dataset, chrs_coexp, coexp_thrs))
 
         degrees = np.ravel((coexpression == 1).sum(axis=0))
         coexpression = sps.triu(coexpression, k=1).tocsr()
@@ -309,7 +309,7 @@ if __name__ == '__main__':
                                  'chr tgt': args.chr_tgt,
                                  'resolutions': '_'.join(map(str, args.resolutions)),
                                  'hic thresholds': '_'.join(map(str, args.hic_thrs)),
-                                 'coexp threshold': args.coexp_thrs,
+                                 'coexp threshold': coexp_thrs,
                                  'full interactions': args.full_interactions,
                                  'full coexpression': args.full_coexpression,
                                  'embedding method': args.method,

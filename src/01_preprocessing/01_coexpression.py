@@ -15,7 +15,7 @@ def main(args):
           'have more that 80% of samples with 0 expression. Removed')
     tcga = tcga[low_expression_genes]
 
-    gene_info = pd.read_csv('../../data/GRCh37_p13_gene_info.txt', delimiter='\t')
+    gene_info = pd.read_csv(args.gene_info, delimiter='\t')
 
     print('Merging gene expression data with gene information from Ensembl hg19')
     tcga = gene_info.merge(tcga, right_on='sample', left_on='Gene name', )
@@ -47,6 +47,8 @@ if __name__ == '__main__':
                         help='Gene expression input file path downloaded from Xena Browser')
     parser.add_argument('--dataset', type=str, required=True,
                         help='Name that will be used to identify the dataset')
+    parser.add_argument('--gene-info', type=str, default='../../data/GRCh37_p13_gene_info.txt',
+                        help='Path of the txt file containing the association gene name - TSS')
     args = parser.parse_args()
 
     main(args)

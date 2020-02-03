@@ -8,7 +8,7 @@ import scipy.sparse as sps
 def main(args):
     chromosomes = range(1, 23) if args.chromosomes is None else args.chromosomes
 
-    dataset_path = '../../data/breast/primary_observed_ICE'.format(args.dataset)
+    dataset_path = '../../data/breast/primary_observed_ICE'
     if not os.path.exists(dataset_path):
         os.mkdir(dataset_path)
 

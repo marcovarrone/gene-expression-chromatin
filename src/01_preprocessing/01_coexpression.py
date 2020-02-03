@@ -10,9 +10,10 @@ def main(args):
     print('Gene expression data loaded:', tcga.shape[0], 'genes and', tcga.shape[1], 'samples')
 
     low_expression_genes = (tcga == 0).sum(axis=1) <= tcga.shape[1] * 0.2
-    tcga = tcga[low_expression_genes]
+
     print(tcga.shape[0] - low_expression_genes.sum(), 'genes out of', tcga.shape[0],
-          'have more that 20% of samples with 0 expression. Removed')
+          'have more that 80% of samples with 0 expression. Removed')
+    tcga = tcga[low_expression_genes]
 
     gene_info = pd.read_csv('../../data/GRCh37_p13_gene_info.txt', delimiter='\t')
 

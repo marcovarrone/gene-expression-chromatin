@@ -26,3 +26,6 @@ establish that the most recent technique, based on random walks, is superior. Ov
 demonstrate that chromatin conformation and gene regulation share a non-linear relationship and that
 gene topological embeddings encode relevant information, which could be used also for downstream
 analysis.
+
+# Pipeline
+![Alt text](pipeline.png)

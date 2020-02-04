@@ -36,8 +36,8 @@ def main(args):
     if not os.path.exists(dataset_path):
         os.mkdir(dataset_path)
 
-    print('Saving in', dataset_path + '/coexpression_raw.csv')
-    tcga.to_csv(dataset_path + '/coexpression_raw.csv')
+    print('Saving in', dataset_path + '/expression_raw.csv')
+    tcga.to_csv(dataset_path + '/expression_raw.csv')
 
 
 if __name__ == '__main__':

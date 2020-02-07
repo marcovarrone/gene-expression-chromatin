@@ -16,38 +16,41 @@ def main(args):
 
     # ToDo: implement single source with whole genome target
     if args.chr_src and args.chr_tgt:
-        df_chr_src = df[df['Chromosome/scaffold name'] == args.chr_src]
-        df_chr_tgt = df[df['Chromosome/scaffold name'] == args.chr_tgt]
-        print('Computing co-expression between chromosome', args.chr_src,'and chromosome', args.chr_tgt)
+        chr_src = args.chr_src
+        chr_tgt = args.chr_tgt
+        df_chr_src = df[df['Chromosome/scaffold name'] == chr_src]
+        df_chr_tgt = df[df['Chromosome/scaffold name'] == chr_tgt]
+        print('Computing co-expression between chromosome', chr_src,'and chromosome', chr_tgt)
     else:
-        args.chr_src = 'all'
-        args.chr_tgt = 'all'
+        chr_src = 'all'
+        chr_tgt = 'all'
         df_chr_src = df
         df_chr_tgt = df
         print('Computing co-expression for all the chromosomes together')
 
-    if args.chr_src == args.chr_tgt:
-        df_chr_src.to_csv(rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_src))
+    if chr_src == chr_tgt:
+        df_chr_src.to_csv(rna_folder + 'expression_info_chr_{}.csv'.format(chr_src))
 
     gene_exp_src = df_chr_src.iloc[:, 5:].to_numpy()
     gene_exp_tgt = df_chr_tgt.iloc[:, 5:].to_numpy()
 
-    '''if args.chr_src == args.chr_tgt:
-        np.save(rna_folder + str(args.dataset) + '_chr_{}.npy'.format(args.chr_src), gene_exp_src)'''
+    '''if chr_src == chr_tgt:
+        np.save(rna_folder + str(args.dataset) + '_chr_{}.npy'.format(chr_src), gene_exp_src)'''
 
     coexp = np.corrcoef(gene_exp_src, gene_exp_tgt)[:gene_exp_src.shape[0], -gene_exp_tgt.shape[0]:]
+    coexp[np.tril_indices_from(coexp, k=1)] = np.nan
 
     if args.save_plot:
-        os.makedirs('../../results/{}/'.format(args.dataset), exist_ok=True)
+        os.makedirs('../../plots/{}/coexpression'.format(args.dataset), exist_ok=True)
 
         plt.imshow(1 - coexp, cmap='RdBu')
-        plt.savefig('../../results/{}/coexpression_chr_{}_{}.png'.format(args.dataset, args.chr_src, args.chr_tgt))
+        plt.savefig('../../plots/{}/coexpression/coexpression_chr_{}_{}.png'.format(args.dataset, chr_src, chr_tgt))
         plt.show()
 
     if args.save_coexp:
         os.makedirs(data_folder + 'coexpression', exist_ok=True)
 
-        np.save(data_folder + 'coexpression/coexpression_chr_{}_{}.npy'.format(args.dataset, args.chr_src, args.chr_tgt),
+        np.save(data_folder + 'coexpression/coexpression_chr_{}_{}.npy'.format(chr_src, chr_tgt),
                 coexp)
 
 

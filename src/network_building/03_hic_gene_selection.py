@@ -6,33 +6,6 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sps
 
-parser = argparse.ArgumentParser()
-
-# ToDo: add description
-parser.add_argument('-rd', '--rna-dataset', type=str, default='MCF7')
-parser.add_argument('-hd', '--hic-dataset', type=str, default='MCF7')
-parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
-parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default='ICE')
-parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='primary')
-parser.add_argument('--chr-src', type=int, default=1)
-parser.add_argument('--chr-tgt', type=int, default=1)
-parser.add_argument('--resolution', type=int, default=10000)
-parser.add_argument('--window', type=int, default=500000)
-parser.add_argument('--aggregation', type=str, choices=['median', 'sum', 'max', None], default=None)
-parser.add_argument('--save-matrix', default=True, action='store_true')
-parser.add_argument('--csv', default=False, action='store_true')
-parser.add_argument('--save-plot', default=True, action='store_true')
-parser.add_argument('--force', default=True, action='store_true')
-parser.add_argument('--all-regions', default=False, action='store_true')
-
-args = parser.parse_args()
-
-data_folder = '/home/varrone/Data/{}/'.format(args.hic_dataset)
-hic_folder = '{}_{}_{}/'.format(args.file, args.type, args.norm)
-output_file = '{}_{}_{}_{}'.format(args.file, args.chr_src, args.chr_tgt, args.resolution)
-
-sps_path = data_folder + hic_folder + output_file + '.npz'
-
 
 def get_gene_bins(gene, bin_size, window, bins):
     tss = gene['Transcription start site (TSS)']
@@ -71,7 +44,7 @@ def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, window, chr_src,
         # Set the contact matrix values to the values of Hi-C at the extracted bins
         contact_matrix[combs[:, 0], combs[:, 1]] = np.ravel(hic[idxs_src, idxs_tgt])
     else:
-        #ToDo: vectorize
+        # ToDo: vectorize
         for i, (idx1, gene1) in enumerate(gene_info_src.iterrows()):
             start1, end1 = get_gene_bins(gene1, resolution, window, bins)
             print("Processing gene", i, "/", gene_info_src.shape[0])
@@ -95,67 +68,89 @@ def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, window, chr_src,
                     else:
                         raise ValueError
                 contact_matrix[i, j] += value
-                # if gene1['Chromosome/scaffold name'] == gene2['Chromosome/scaffold name']:
-                #    contact_matrix[j, i] += value
+
     if chr_src == chr_tgt:
-        contact_matrix = np.triu(contact_matrix, 1)
-        contact_matrix += contact_matrix.T
+        #plt.imshow(np.log1p(contact_matrix), cmap='Reds')
+        #plt.show()
+        contact_matrix[np.tril_indices_from(contact_matrix, k=1)] = np.nan
+        #plt.imshow(np.log1p(contact_matrix), cmap='Reds')
+        #plt.show()
+
     return contact_matrix
 
-
-if __name__ == '__main__':
-
-    data_folder = 'data/{}/'.format(args.rna_dataset)
+def main(args):
+    data_folder = '../../data/{}/'.format(args.dataset)
     hic_folder = data_folder + 'hic/'
     rna_folder = data_folder + 'rna/'
-    if not os.path.exists(hic_folder):
-        os.makedirs(hic_folder)
-    if not os.path.exists(rna_folder):
-        os.makedirs(rna_folder)
 
-    hic_output_file = '{}_{}_{}_{}_{}_{}_{}{}{}'.format(args.file, args.type, args.norm, args.chr_src, args.chr_tgt,
-                                                        args.resolution, args.window,
-                                                        '_all' if args.all_regions else '',
-                                                        ('_' + args.aggregation) if args.aggregation else '')
+    hic_output_file = '{}_{}_{}_{}_{}_{}'.format(args.file, args.type, args.norm, args.chr_src, args.chr_tgt,
+                                                 args.window)
 
     print(hic_output_file)
 
     df_rna_src = pd.read_csv(
-        rna_folder + str(args.rna_dataset) + '_chr_{:02d}_rna.csv'.format(args.chr_src))
+        rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_src))
 
     df_rna_tgt = pd.read_csv(
-        rna_folder + str(args.rna_dataset) + '_chr_{:02d}_rna.csv'.format(args.chr_tgt))
+        rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_tgt))
 
     if os.path.exists(hic_folder + hic_output_file + '.npy') and not args.force:
         print("Data already present. Loading from file.")
         contact_matrix = np.load(hic_folder + hic_output_file + '.npy')
     else:
-        hic_matrix = sps.load_npz(
-            '/home/varrone/Data/{}/{}_{}_{}/{}_{}_{}_{}.npz'.format(args.hic_dataset, args.file, args.type,
-                                                                            args.norm, args.file, args.chr_src, args.chr_tgt, args.resolution))
-        if args.chr_src == args.chr_tgt:
+        hic = sps.load_npz(
+            data_folder + 'hic_raw/{}_{}_{}/{}_{}_{}_{}_{}_{}.npz'.format(args.file, args.type, args.norm, args.file,
+                                                                          args.type, args.norm, args.chr_src,
+                                                                          args.chr_tgt, args.resolution))
+        '''if args.chr_src == args.chr_tgt:
+            plt.imshow(np.log1p(hic_matrix.toarray()), cmap="Reds")
+            plt.show()
+            # ToDo: check if it is necessary
             hic_matrix = sps.triu(hic_matrix)
             hic_matrix_full = hic_matrix + hic_matrix.T
             hic_matrix_full = hic_matrix_full.todense()
             np.fill_diagonal(hic_matrix_full, np.diagonal(hic_matrix.todense()))
         else:
-            hic_matrix_full = hic_matrix
-        contact_matrix = generate_hic(hic_matrix_full, df_rna_src, df_rna_tgt, args.resolution, args.window,
+            hic_matrix_full = hic_matrix'''
+        contact_matrix = generate_hic(hic, df_rna_src, df_rna_tgt, args.resolution, args.window,
                                       args.chr_src, args.chr_tgt)
 
     if args.save_matrix:
-        if not os.path.exists(hic_folder):
-            os.makedirs(hic_folder)
+        os.makedirs(hic_folder, exist_ok=True)
 
-        if args.csv:
-            np.savetxt(hic_folder + hic_output_file + '.csv', contact_matrix, delimiter=",")
-        else:
-            np.save(hic_folder + hic_output_file + '.npy', contact_matrix)
+        np.save(hic_folder + hic_output_file + '.npy', contact_matrix)
 
-    contact_matrix[contact_matrix == 0] = np.nan
-    plt.imshow(np.log1p(contact_matrix), cmap="Reds")
     if args.save_plot:
-        if not os.path.exists('plots'):
-            os.makedirs('plots')
-        plt.savefig('plots/{}/{}.png'.format(args.hic_dataset, hic_output_file))
-    plt.show()
+        plt.imshow(np.log1p(contact_matrix), cmap="Reds")
+        os.makedirs('../../plots/{}/hic/'.format(args.dataset), exist_ok=True)
+        plt.savefig('../../plots/{}/hic/{}.png'.format(args.dataset, hic_output_file))
+        plt.clf()
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+
+    # ToDo: add description
+    parser.add_argument('-d', '--dataset', type=str, default='prostate')
+    parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
+    parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default='ICE')
+    parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='primary')
+    parser.add_argument('--chr-src', type=int, default=None)
+    parser.add_argument('--chr-tgt', type=int, default=None)
+    parser.add_argument('--resolution', type=int, default=40000)
+    parser.add_argument('--window', type=int, default=40000)
+    parser.add_argument('--save-matrix', default=False, action='store_true')
+    parser.add_argument('--save-plot', default=True, action='store_true')
+    parser.add_argument('--force', default=True, action='store_true')
+
+    args = parser.parse_args()
+
+    if args.chr_src is None or args.chr_tgt is None:
+        rows = []
+        for chr_src in range(1,23):
+            args.chr_src = chr_src
+            for chr_tgt in range(chr_src, 23):
+                args.chr_tgt = chr_tgt
+                main(args)
+    else:
+        main(args)

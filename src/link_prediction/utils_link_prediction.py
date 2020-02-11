@@ -24,8 +24,6 @@ def select_classifier(classifier_name, clf_params, seed=42):
         classifier = MLPClassifier(max_iter=500, hidden_layer_sizes=(100,))
     elif classifier_name == 'svm':
         classifier = SVC(gamma='scale')
-    elif classifier_name == 'mlp_2':
-        classifier = MLPClassifier(max_iter=500, hidden_layer_sizes=(100, 100,), random_state=seed)
     elif classifier_name == 'rf':
         classifier = RandomForestClassifier(n_jobs=10, **clf_params)
     else:
@@ -36,11 +34,13 @@ def select_classifier(classifier_name, clf_params, seed=42):
 def confusion_matrix_distinct(y_true, y_pred, ids, mask):
     is_intra = mask[ids[:, 0], ids[:, 1]].astype(bool)
     y_true_intra, y_pred_intra = y_true[is_intra], y_pred[is_intra]
-    y_true_inter, y_pred_inter = y_true[~is_intra], y_pred[~is_intra]
     print('Intra accuracy: ', accuracy_score(y_true_intra, y_pred_intra))
     print(confusion_matrix(y_true_intra, y_pred_intra))
-    print('Inter accuracy: ', accuracy_score(y_true_inter, y_pred_inter))
-    print(confusion_matrix(y_true_inter, y_pred_inter))
+
+    if (is_intra == 0).any():
+        y_true_inter, y_pred_inter = y_true[~is_intra], y_pred[~is_intra]
+        print('Inter accuracy: ', accuracy_score(y_true_inter, y_pred_inter))
+        print(confusion_matrix(y_true_inter, y_pred_inter))
 
 
 def evaluate(X_train, y_train, X_test, y_test, classifier, mask):
@@ -68,11 +68,11 @@ def evaluate(X_train, y_train, X_test, y_test, classifier, mask):
     return results
 
 
-def evaluate_embedding(X_train, y_train, classifier_name, verbose=1, clf_params={}, n_splits=5, mask=None, X_test=None,
+def evaluate_embedding(X_train, y_train, classifier_name, verbose=1, clf_params={}, cv_splits=5, mask=None, X_test=None,
                        y_test=None):
     results = defaultdict(list)
     if X_test is None and y_test is None:
-        skf = StratifiedKFold(n_splits=n_splits, shuffle=True)
+        skf = StratifiedKFold(n_splits=cv_splits, shuffle=True)
         for train_index, val_index in skf.split(X_train, y_train):
             classifier = select_classifier(classifier_name, clf_params)
             results_iter = evaluate(X_train[train_index], y_train[train_index], X_train[val_index],
@@ -101,7 +101,8 @@ def generate_embedding(args, emb_path, interactions_path, command):
         adj = np.load(interactions_path)
         graph = from_numpy_matrix(adj)
 
-        nx.write_weighted_edgelist(graph, '../../data/{}/{}/{}.edgelist'.format(args.dataset, args.folder, args.name))
+        nx.write_edgelist(graph,
+                                   '../../data/{}/chromatin_networks/{}.edgelist'.format(args.dataset, args.name))
 
         print(command)
         os.system(command)
@@ -120,7 +121,7 @@ def generate_embedding(args, emb_path, interactions_path, command):
             except KeyError:
                 print('Node', gene, 'disconnected.')
                 # np.delete(emb, i, axis=0)
-                emb[gene, :] = np.zeros(args.emb_size)
+                emb[gene, :] = np.nan
                 disconnected_nodes.append(gene)
 
         os.makedirs('../../data/{}/disconnected_nodes/'.format(args.dataset), exist_ok=True)
@@ -149,7 +150,7 @@ def from_numpy_matrix(A):
 def link_centrality(centrality, edges, type):
     centrality_src = centrality[edges[:, 0]]
     centrality_tgt = centrality[edges[:, 1]]
-    if type == 'abs':
+    if type == 'l1':
         centrality = np.abs(centrality_src - centrality_tgt)
     elif type == 'avg':
         centrality = np.mean(np.vstack((centrality_src, centrality_tgt)), axis=0)
@@ -158,83 +159,85 @@ def link_centrality(centrality, edges, type):
     return centrality
 
 
-def topological_features(_args, _edges, _non_edges):
-    adj_hic = np.load('../../data/{}/{}/{}.npy'.format(_args.dataset, _args.folder, _args.name))
+def topological_features(args, edges, non_edges):
+    adj_hic = np.load('../../data/{}/chromatin_networks/{}.npy'.format(args.dataset, args.name))
     graph_hic = from_numpy_matrix(adj_hic)
     graph_hic = nx.convert_node_labels_to_integers(graph_hic)
 
     degrees = np.array(list(dict(graph_hic.degree()).values()))
 
-    betweenness = np.array(list(betweenness_centrality_parallel(graph_hic, processes=25).values()))
+    betweenness = np.array(list(betweenness_centrality_parallel(graph_hic, 20).values()))
 
     clustering = np.array(list(nx.clustering(graph_hic).values()))
 
     node_embs = np.vstack((degrees, betweenness, clustering)).T
 
-    os.makedirs('../../data/{}/embeddings/topological/'.format(_args.dataset), exist_ok=True)
-    np.save('../../data/{}/embeddings/topological/{}.npy'.format(_args.dataset, _args.name), node_embs)
+    os.makedirs('../../data/{}/embeddings/topological/'.format(args.dataset), exist_ok=True)
+    np.save('../../data/{}/embeddings/topological/{}.npy'.format(args.dataset, args.name), node_embs)
 
-    parameters_pos = _edges.T
-    parameters_neg = _non_edges.T
-    if _args.aggregator == 'concat':
-        parameters_pos = np.vstack((parameters_pos, degrees[_edges[:, 0]], degrees[_edges[:, 1]],
-                                    betweenness[_edges[:, 0]], betweenness[_edges[:, 1]],
-                                    clustering[_edges[:, 0]], clustering[_edges[:, 1]]))
+    parameters_pos = edges.T
+    parameters_neg = non_edges.T
+    if 'concat' in args.aggregators:
+        parameters_pos = np.vstack((parameters_pos, degrees[edges[:, 0]], degrees[edges[:, 1]],
+                                    betweenness[edges[:, 0]], betweenness[edges[:, 1]],
+                                    clustering[edges[:, 0]], clustering[edges[:, 1]]))
 
-        parameters_neg = np.vstack((parameters_neg, degrees[_non_edges[:, 0]], degrees[_non_edges[:, 1]],
-                                    betweenness[_non_edges[:, 0]], betweenness[_non_edges[:, 1]],
-                                    clustering[_non_edges[:, 0]], clustering[_non_edges[:, 1]]))
-    if _args.aggregator == 'avg':
-        degrees_avg_pos = link_centrality(degrees, _edges, 'avg')
-        degrees_avg_neg = link_centrality(degrees, _non_edges, 'avg')
+        parameters_neg = np.vstack((parameters_neg, degrees[non_edges[:, 0]], degrees[non_edges[:, 1]],
+                                    betweenness[non_edges[:, 0]], betweenness[non_edges[:, 1]],
+                                    clustering[non_edges[:, 0]], clustering[non_edges[:, 1]]))
+    if 'avg' in args.aggregators:
+        degrees_avg_pos = link_centrality(degrees, edges, 'avg')
+        degrees_avg_neg = link_centrality(degrees, non_edges, 'avg')
 
-        betweenness_avg_pos = link_centrality(betweenness, _edges, 'avg')
-        betweenness_avg_neg = link_centrality(betweenness, _non_edges, 'avg')
+        betweenness_avg_pos = link_centrality(betweenness, edges, 'avg')
+        betweenness_avg_neg = link_centrality(betweenness, non_edges, 'avg')
 
-        clustering_avg_pos = link_centrality(clustering, _edges, 'avg')
-        clustering_avg_neg = link_centrality(clustering, _non_edges, 'avg')
+        clustering_avg_pos = link_centrality(clustering, edges, 'avg')
+        clustering_avg_neg = link_centrality(clustering, non_edges, 'avg')
 
         parameters_pos = np.vstack((parameters_pos, degrees_avg_pos, betweenness_avg_pos, clustering_avg_pos))
         parameters_neg = np.vstack((parameters_neg, degrees_avg_neg, betweenness_avg_neg, clustering_avg_neg))
 
-    if _args.aggregator == 'l1':
-        degrees_l1_pos = link_centrality(degrees, _edges, 'l1')
-        degrees_l1_neg = link_centrality(degrees, _non_edges, 'l1')
+    if 'l1' in args.aggregators:
+        degrees_l1_pos = link_centrality(degrees, edges, 'l1')
+        degrees_l1_neg = link_centrality(degrees, non_edges, 'l1')
 
-        betweenness_l1_pos = link_centrality(betweenness, _edges, 'l1')
-        betweenness_l1_neg = link_centrality(betweenness, _non_edges, 'l1')
+        betweenness_l1_pos = link_centrality(betweenness, edges, 'l1')
+        betweenness_l1_neg = link_centrality(betweenness, non_edges, 'l1')
 
-        clustering_l1_pos = link_centrality(clustering, _edges, 'l1')
-        clustering_l1_neg = link_centrality(clustering, _non_edges, 'l1')
+        clustering_l1_pos = link_centrality(clustering, edges, 'l1')
+        clustering_l1_neg = link_centrality(clustering, non_edges, 'l1')
 
         parameters_pos = np.vstack((parameters_pos, degrees_l1_pos, betweenness_l1_pos, clustering_l1_pos))
         parameters_neg = np.vstack((parameters_neg, degrees_l1_neg, betweenness_l1_neg, clustering_l1_neg))
 
-    if _args.edge_features:
+    if args.edge_features:
         shortest_path_lengths_pos = np.array(list(
             map(lambda e: nx.shortest_path_length(graph_hic, e[0], e[1]) if nx.has_path(graph_hic, e[0],
                                                                                         e[1]) else np.nan,
-                _edges)))
+                edges)))
         shortest_path_lengths_neg = np.array(list(
             map(lambda e: nx.shortest_path_length(graph_hic, e[0], e[1]) if nx.has_path(graph_hic, e[0],
                                                                                         e[1]) else np.nan,
-                _non_edges)))
+                non_edges)))
 
-        jaccard_index_pos = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, _edges))))
-        jaccard_index_neg = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, _non_edges))))
+        jaccard_index_pos = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, edges))))
+        jaccard_index_neg = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, non_edges))))
 
         parameters_pos = np.vstack((parameters_pos, shortest_path_lengths_pos, jaccard_index_pos))
         parameters_neg = np.vstack((parameters_neg, shortest_path_lengths_neg, jaccard_index_neg))
 
     X = np.hstack((parameters_pos, parameters_neg)).T
-    if _args.edge_features:
+    print(X.shape)
+
+    if args.edge_features:
         imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=9999)
         X = imp.fit_transform(X)
     return X
 
 
-def distance_embedding(full_interactions, dataset, chr_src, edges, non_edges):
-    if full_interactions:
+def distance_embedding(dataset, edges, non_edges, chr_src=None):
+    if chr_src is None:
         gene_info = pd.read_csv(
             '../../data/{}/rna/expression_info_chr_all_rna.csv'.format(
                 dataset))
@@ -255,30 +258,28 @@ def distance_embedding(full_interactions, dataset, chr_src, edges, non_edges):
     return X
 
 
-def method_embedding(args, n_nodes, start_src, end_src, edges, non_edges):
+def method_embedding(args, n_nodes, edges, non_edges, start_src=None, end_src=None):
     if args.method == 'random':
         embeddings = np.random.rand(n_nodes, args.emb_size)
     else:
+        #ToDo: if embeddings doesn't exist, run the embedding method
         embeddings = np.load(
             '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
-
-    if args.full_interactions and not args.full_coexpression:
-        embeddings = embeddings[start_src:end_src]
 
     # Add edges and non_edges ids in dataset to identify the type of interaction for the confusion matrix
     # They will be removed from the dataset before training
     pos_features = edges
     neg_features = non_edges
-    if 'hadamard' in args.aggregator:
+    if 'hadamard' in args.aggregators:
         pos_features, neg_features = hadamard_embedding(pos_features, neg_features, embeddings, edges,
                                                         non_edges)
-    if 'avg' in args.aggregator:
+    if 'avg' in args.aggregators:
         pos_features, neg_features = average_embedding(pos_features, neg_features, embeddings, edges, non_edges)
-    if 'l1' in args.aggregator:
+    if 'l1' in args.aggregators:
         pos_features, neg_features = l1_embedding(pos_features, neg_features, embeddings, edges, non_edges)
-    if 'l2' in args.aggregator:
+    if 'l2' in args.aggregators:
         pos_features, neg_features = l2_embedding(pos_features, neg_features, embeddings, edges, non_edges)
-    if 'concat' in args.aggregator:
+    if 'concat' in args.aggregators:
         pos_features, neg_features = concat_embedding(pos_features, neg_features, embeddings, edges, non_edges)
 
     if pos_features is None or neg_features is None:

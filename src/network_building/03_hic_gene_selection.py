@@ -149,8 +149,8 @@ if __name__ == '__main__':
         rows = []
         for chr_src in range(1,23):
             args.chr_src = chr_src
-            for chr_tgt in range(chr_src, 23):
-                args.chr_tgt = chr_tgt
-                main(args)
+            #for chr_tgt in range(chr_src, 23):
+            args.chr_tgt = chr_src
+            main(args)
     else:
         main(args)

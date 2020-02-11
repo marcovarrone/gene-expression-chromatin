@@ -16,7 +16,13 @@ def save_chr_sizes(hic):
         chr_sizes = np.empty(23)
     np.save(chr_sizes_path, chr_sizes)
 
+def save_disconnected_nodes(hic, dataset, filename):
+    degrees = np.sum(hic, axis=0)
+    disconnected_nodes = np.ravel(np.argwhere(degrees == 0))
+    np.save('../../data/{}/disconnected_nodes/{}.npy'.format(dataset, filename), disconnected_nodes)
 
+
+#ToDo: make single function for common code
 def single_chromosome(args):
     hic_name = '{}_{}_{}_{}_{}_{}'.format(args.file, args.type, args.norm, args.chr_src, args.chr_tgt, args.window)
 
@@ -25,9 +31,6 @@ def single_chromosome(args):
 
     if args.chr_src == args.chr_tgt:
         save_chr_sizes(hic)
-
-    '''if args.chr_src == args.chr_tgt:
-        hic[np.tril_indices_from(hic, k=1)] = np.nan'''
 
     is_intra = (args.chr_src == args.chr_tgt)
     if is_intra and args.perc_intra is not None:
@@ -44,17 +47,20 @@ def single_chromosome(args):
     if not args.weighted:
         hic[hic > 0] = 1
 
+    filename = '{}{}_{}.npy'.format(hic_name, '_w' if args.weighted else '', threshold)
+
+    save_disconnected_nodes(hic, args.dataset, filename)
+
     if args.save_matrix:
-        chromatin_networks_folder = '../../data/{}/chromatin_networks/'.format(args.dataset)
-        os.makedirs(chromatin_networks_folder, exist_ok=True)
+        data_folder = '../../data/{}/chromatin_networks/'.format(args.dataset)
+        os.makedirs(data_folder, exist_ok=True)
         np.save(
-            chromatin_networks_folder + '{}{}_{}.npy'.format(hic_name, '_w' if args.weighted else '', threshold), hic)
+            data_folder + filename, hic)
 
     if args.save_plot:
         plt.imshow(np.log1p(hic), cmap="Reds")
         os.makedirs('../../plots/{}/chromatin_networks'.format(args.dataset), exist_ok=True)
-        plt.savefig('../../plots/{}/chromatin_networks/{}{}_{}.png'.format(args.dataset, hic_name,
-                                                                           '_w' if args.weighted else '', threshold))
+        plt.savefig('../../plots/{}/chromatin_networks/{}.png'.format(args.dataset, filename))
 
 
 def multi_chromosome(args):
@@ -95,6 +101,8 @@ def multi_chromosome(args):
     else:
         filename = '{}_{}'.format(hic_name, threshold_intra)
 
+    save_disconnected_nodes(hic_thr, args.dataset, filename)
+
     if args.save_matrix:
         data_folder = '../../data/{}/chromatin_networks/'.format(args.dataset)
         os.makedirs(data_folder, exist_ok=True)
@@ -106,6 +114,7 @@ def multi_chromosome(args):
         plt.imshow(np.log1p(hic_thr), cmap='Oranges')
         plt.savefig(
             '../../plots/{}/chromatin_networks/{}.png'.format(args.dataset, filename))
+
 
 
 if __name__ == '__main__':

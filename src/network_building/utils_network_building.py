@@ -3,23 +3,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+from utils import intra_mask
 
-def intra_mask(shapes, nans=False):
-    mask = np.zeros(np.sum(shapes, axis=0))
-    if nans:
-        mask[:] = np.nan
-
-    r, c = 0, 0
-    for i, (rr, cc) in enumerate(shapes):
-        if nans:
-            values = np.zeros((rr,cc))
-        else:
-            values = np.ones((rr, cc))
-        mask[r:r + rr, c:c + cc] = values
-        r += rr
-        c += cc
-
-    return mask
 
 
 def coexpression_threshold(dataset, percentile_intra=None, percentile_inter=None):
@@ -40,12 +25,12 @@ def coexpression_threshold(dataset, percentile_intra=None, percentile_inter=None
     if percentile_intra:
         coexpression_intra = coexpression_full * mask
         coexpression_intra[coexpression_intra == 0] = np.nan
-        threshold_intra = np.nanpercentile(coexpression_intra, percentile_intra)
+        threshold_intra = np.round(np.nanpercentile(coexpression_intra, percentile_intra), 2)
 
     if percentile_inter:
         coexpression_inter = coexpression_full * np.logical_not(mask)
         coexpression_inter[coexpression_inter == 0] = np.nan
-        threshold_inter = np.nanpercentile(coexpression_inter, percentile_inter)
+        threshold_inter = np.round(np.nanpercentile(coexpression_inter, percentile_inter), 2)
 
     if percentile_intra and percentile_inter:
         return threshold_intra, threshold_inter
@@ -103,12 +88,12 @@ def chromatin_threshold(dataset, file, type, norm, window, percentile_intra=None
     if percentile_intra:
         hic_intra = hic_full * mask
         hic_intra[hic_intra == 0] = np.nan
-        threshold_intra = np.nanpercentile(hic_intra, percentile_intra)
+        threshold_intra = np.round(np.nanpercentile(hic_intra, percentile_intra), 2)
 
     if percentile_inter:
         hic_inter = hic_full * np.logical_not(mask)
         hic_inter[hic_inter == 0] = np.nan
-        threshold_inter = np.nanpercentile(hic_inter, percentile_inter)
+        threshold_inter = np.round(np.nanpercentile(hic_inter, percentile_inter), 2)
 
     if percentile_intra and percentile_inter:
         return threshold_intra, threshold_inter

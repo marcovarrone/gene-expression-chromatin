@@ -1,5 +1,6 @@
 import itertools
 import os
+import pickle
 from collections import defaultdict
 from multiprocessing import Pool
 from time import time
@@ -13,7 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, precision_score, recall_score, confusion_matrix
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
@@ -101,8 +102,7 @@ def generate_embedding(args, emb_path, interactions_path, command):
         adj = np.load(interactions_path)
         graph = from_numpy_matrix(adj)
 
-        nx.write_edgelist(graph,
-                                   '../../data/{}/chromatin_networks/{}.edgelist'.format(args.dataset, args.name))
+        nx.write_edgelist(graph, '../../data/{}/chromatin_networks/{}.edgelist'.format(args.dataset, args.name))
 
         print(command)
         os.system(command)
@@ -147,95 +147,6 @@ def from_numpy_matrix(A):
     return graph
 
 
-def link_centrality(centrality, edges, type):
-    centrality_src = centrality[edges[:, 0]]
-    centrality_tgt = centrality[edges[:, 1]]
-    if type == 'l1':
-        centrality = np.abs(centrality_src - centrality_tgt)
-    elif type == 'avg':
-        centrality = np.mean(np.vstack((centrality_src, centrality_tgt)), axis=0)
-    else:
-        raise ValueError()
-    return centrality
-
-
-def topological_features(args, edges, non_edges):
-    adj_hic = np.load('../../data/{}/chromatin_networks/{}.npy'.format(args.dataset, args.name))
-    graph_hic = from_numpy_matrix(adj_hic)
-    graph_hic = nx.convert_node_labels_to_integers(graph_hic)
-
-    degrees = np.array(list(dict(graph_hic.degree()).values()))
-
-    betweenness = np.array(list(betweenness_centrality_parallel(graph_hic, 20).values()))
-
-    clustering = np.array(list(nx.clustering(graph_hic).values()))
-
-    node_embs = np.vstack((degrees, betweenness, clustering)).T
-
-    os.makedirs('../../data/{}/embeddings/topological/'.format(args.dataset), exist_ok=True)
-    np.save('../../data/{}/embeddings/topological/{}.npy'.format(args.dataset, args.name), node_embs)
-
-    parameters_pos = edges.T
-    parameters_neg = non_edges.T
-    if 'concat' in args.aggregators:
-        parameters_pos = np.vstack((parameters_pos, degrees[edges[:, 0]], degrees[edges[:, 1]],
-                                    betweenness[edges[:, 0]], betweenness[edges[:, 1]],
-                                    clustering[edges[:, 0]], clustering[edges[:, 1]]))
-
-        parameters_neg = np.vstack((parameters_neg, degrees[non_edges[:, 0]], degrees[non_edges[:, 1]],
-                                    betweenness[non_edges[:, 0]], betweenness[non_edges[:, 1]],
-                                    clustering[non_edges[:, 0]], clustering[non_edges[:, 1]]))
-    if 'avg' in args.aggregators:
-        degrees_avg_pos = link_centrality(degrees, edges, 'avg')
-        degrees_avg_neg = link_centrality(degrees, non_edges, 'avg')
-
-        betweenness_avg_pos = link_centrality(betweenness, edges, 'avg')
-        betweenness_avg_neg = link_centrality(betweenness, non_edges, 'avg')
-
-        clustering_avg_pos = link_centrality(clustering, edges, 'avg')
-        clustering_avg_neg = link_centrality(clustering, non_edges, 'avg')
-
-        parameters_pos = np.vstack((parameters_pos, degrees_avg_pos, betweenness_avg_pos, clustering_avg_pos))
-        parameters_neg = np.vstack((parameters_neg, degrees_avg_neg, betweenness_avg_neg, clustering_avg_neg))
-
-    if 'l1' in args.aggregators:
-        degrees_l1_pos = link_centrality(degrees, edges, 'l1')
-        degrees_l1_neg = link_centrality(degrees, non_edges, 'l1')
-
-        betweenness_l1_pos = link_centrality(betweenness, edges, 'l1')
-        betweenness_l1_neg = link_centrality(betweenness, non_edges, 'l1')
-
-        clustering_l1_pos = link_centrality(clustering, edges, 'l1')
-        clustering_l1_neg = link_centrality(clustering, non_edges, 'l1')
-
-        parameters_pos = np.vstack((parameters_pos, degrees_l1_pos, betweenness_l1_pos, clustering_l1_pos))
-        parameters_neg = np.vstack((parameters_neg, degrees_l1_neg, betweenness_l1_neg, clustering_l1_neg))
-
-    if args.edge_features:
-        shortest_path_lengths_pos = np.array(list(
-            map(lambda e: nx.shortest_path_length(graph_hic, e[0], e[1]) if nx.has_path(graph_hic, e[0],
-                                                                                        e[1]) else np.nan,
-                edges)))
-        shortest_path_lengths_neg = np.array(list(
-            map(lambda e: nx.shortest_path_length(graph_hic, e[0], e[1]) if nx.has_path(graph_hic, e[0],
-                                                                                        e[1]) else np.nan,
-                non_edges)))
-
-        jaccard_index_pos = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, edges))))
-        jaccard_index_neg = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, non_edges))))
-
-        parameters_pos = np.vstack((parameters_pos, shortest_path_lengths_pos, jaccard_index_pos))
-        parameters_neg = np.vstack((parameters_neg, shortest_path_lengths_neg, jaccard_index_neg))
-
-    X = np.hstack((parameters_pos, parameters_neg)).T
-    print(X.shape)
-
-    if args.edge_features:
-        imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=9999)
-        X = imp.fit_transform(X)
-    return X
-
-
 def distance_embedding(dataset, edges, non_edges, chr_src=None):
     if chr_src is None:
         gene_info = pd.read_csv(
@@ -258,33 +169,83 @@ def distance_embedding(dataset, edges, non_edges, chr_src=None):
     return X
 
 
-def method_embedding(args, n_nodes, edges, non_edges, start_src=None, end_src=None):
-    if args.method == 'random':
-        embeddings = np.random.rand(n_nodes, args.emb_size)
-    else:
-        #ToDo: if embeddings doesn't exist, run the embedding method
-        embeddings = np.load(
-            '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
+def add_topological_edge_embeddings(graph_hic, edges, non_edges, features_pos, features_neg):
+    shortest_path_lengths_pos = np.array(list(
+        map(lambda e: nx.shortest_path_length(graph_hic, e[0], e[1]) if nx.has_path(graph_hic, e[0],
+                                                                                    e[1]) else np.nan,
+            edges)))
+    shortest_path_lengths_neg = np.array(list(
+        map(lambda e: nx.shortest_path_length(graph_hic, e[0], e[1]) if nx.has_path(graph_hic, e[0],
+                                                                                    e[1]) else np.nan,
+            non_edges)))
 
+    jaccard_index_pos = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, edges))))
+    jaccard_index_neg = np.array(list(map(lambda e: e[2], nx.jaccard_coefficient(graph_hic, non_edges))))
+
+    features_pos = np.hstack((features_pos, shortest_path_lengths_pos[:, None], jaccard_index_pos[:, None]))
+    features_neg = np.hstack((features_neg, shortest_path_lengths_neg[:, None], jaccard_index_neg[:, None]))
+    return features_pos, features_neg
+
+
+def topological_features(args, edges, non_edges):
+    adj_hic = np.load('../../data/{}/chromatin_networks/{}.npy'.format(args.dataset, args.chromatin_network_name))
+    graph_hic = from_numpy_matrix(adj_hic)
+    graph_hic = nx.convert_node_labels_to_integers(graph_hic)
+
+    if os.path.exists('../../data/{}/embeddings/topological/{}.npy'.format(args.dataset, args.chromatin_network_name)):
+        embeddings = np.load('../../data/{}/embeddings/topological/{}.npy'.format(args.dataset, args.chromatin_network_name))
+    else:
+        degrees = np.array(list(dict(graph_hic.degree()).values()))
+        betweenness = np.array(list(betweenness_centrality_parallel(graph_hic, 20).values()))
+        clustering = np.array(list(nx.clustering(graph_hic).values()))
+
+        embeddings = np.hstack((degrees[:, None], betweenness[:, None], clustering[:, None]))
+
+        os.makedirs('../../data/{}/embeddings/topological/'.format(args.dataset), exist_ok=True)
+        np.save('../../data/{}/embeddings/topological/{}.npy'.format(args.dataset, args.chromatin_network_name), embeddings)
+
+    features_pos, features_neg = combine_embeddings(embeddings, args.aggregators, edges, non_edges)
+    features_pos, features_neg = add_topological_edge_embeddings(graph_hic, edges, non_edges, features_pos,
+                                                                 features_neg)
+    X = np.vstack((features_pos, features_neg))
+
+    imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=9999)
+    X = imp.fit_transform(X)
+    return X
+
+
+def combine_embeddings(embeddings, aggregators, edges, non_edges):
     # Add edges and non_edges ids in dataset to identify the type of interaction for the confusion matrix
     # They will be removed from the dataset before training
     pos_features = edges
     neg_features = non_edges
-    if 'hadamard' in args.aggregators:
-        pos_features, neg_features = hadamard_embedding(pos_features, neg_features, embeddings, edges,
-                                                        non_edges)
-    if 'avg' in args.aggregators:
+    if 'hadamard' in aggregators:
+        pos_features, neg_features = hadamard_embedding(pos_features, neg_features, embeddings, edges, non_edges)
+    if 'avg' in aggregators:
         pos_features, neg_features = average_embedding(pos_features, neg_features, embeddings, edges, non_edges)
-    if 'l1' in args.aggregators:
+    if 'l1' in aggregators:
         pos_features, neg_features = l1_embedding(pos_features, neg_features, embeddings, edges, non_edges)
-    if 'l2' in args.aggregators:
+    if 'l2' in aggregators:
         pos_features, neg_features = l2_embedding(pos_features, neg_features, embeddings, edges, non_edges)
-    if 'concat' in args.aggregators:
+    if 'concat' in aggregators:
         pos_features, neg_features = concat_embedding(pos_features, neg_features, embeddings, edges, non_edges)
 
-    if pos_features is None or neg_features is None:
+    if pos_features.shape[1] == 2 or neg_features.shape[1] == 2:
         raise ValueError('No aggregator defined.')
-    X = np.vstack((pos_features, neg_features))
+
+    return pos_features, neg_features
+
+
+def method_embedding(args, n_nodes, edges, non_edges):
+    if args.method == 'random':
+        embeddings = np.random.rand(n_nodes, args.emb_size)
+    else:
+        # ToDo: if embeddings don't exist, run the embedding method
+        embeddings = np.load(
+            '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
+
+    features_pos, features_neg = combine_embeddings(embeddings, args.aggregators, edges, non_edges)
+    X = np.vstack((features_pos, features_neg))
     return X
 
 
@@ -329,6 +290,94 @@ def concat_embedding(pos_features, neg_features, embeddings, edges, non_edges):
     neg_features_partial = np.hstack((embeddings[non_edges[:, 0]], embeddings[non_edges[:, 1]]))
     return append_features(pos_features, neg_features, pos_features_partial, neg_features_partial)
 
+def setup_filenames_and_folders(args, chromosome_folder):
+    hyperparameters = ''
+    if args.method != 'distance':
+        hyperparameters = 'es{}'.format(args.emb_size)
+
+    if args.method == 'node2vec':
+        hyperparameters += '_nw{}_wl{}_p{}_q{}'.format(args.num_walks, args.walk_len, args.p, args.q)
+
+    args.aggregators = '_'.join(args.aggregators)
+
+    args.embedding = args.chromatin_network_name + '_' + hyperparameters
+
+    os.makedirs('../../results/{}/chr_{}'.format(args.dataset, chromosome_folder), exist_ok=True)
+    os.makedirs('../../results/{}/predictions/chr_{}'.format(args.dataset, chromosome_folder), exist_ok=True)
+    if args.method == 'topological':
+        filename = '{}chr_{}/{}_{}_{}_{}.pkl'.format('test/' if args.test else '', chromosome_folder, args.classifier,
+                                                     args.method, args.chromatin_network_name, args.aggregators)
+    else:
+        filename = '{}chr_{}/{}_{}_{}_{}_{}.pkl'.format('test/' if args.test else '', chromosome_folder, args.classifier,
+                                                        args.method, args.embedding, args.aggregators, args.coexp_thr)
+    return args, filename
+
+def load_coexpression(args, chr_src, chr_tgt, chromatin_network_name):
+    coexpression = np.load(
+        '../../data/{}/coexpression_networks/coexpression_chr_{}_{}_{}.npy'.format(args.dataset, chr_src,
+                                                                                   chr_tgt, args.coexp_thr))
+
+    disconnected_nodes = np.load(
+        '../../data/{}/disconnected_nodes/{}.npy'.format(
+            args.dataset, chromatin_network_name))
+
+    print("N. disconnected nodes:", len(disconnected_nodes))
+    if len(disconnected_nodes) > 0:
+        coexpression[disconnected_nodes] = np.nan
+        coexpression[:, disconnected_nodes] = np.nan
+    return coexpression
+
+def get_edges_intra(coexpression):
+    n_nodes = coexpression.shape[0]
+
+    coexpression_intra = coexpression
+
+    edges_intra = np.array(np.argwhere(coexpression_intra == 1))
+    edges_intra_nodes = np.unique(edges_intra)
+
+    non_nodes_intra = np.setdiff1d(np.arange(n_nodes), edges_intra_nodes)
+
+    coexpression_intra_neg = coexpression_intra.copy()
+    coexpression_intra_neg[non_nodes_intra, :] = np.nan
+    coexpression_intra_neg[:, non_nodes_intra] = np.nan
+
+    non_edges_intra = np.array(np.argwhere(coexpression_intra_neg == 0))
+    non_edges_intra = non_edges_intra[
+        np.random.choice(non_edges_intra.shape[0], edges_intra.shape[0], replace=False)]
+
+    return edges_intra, non_edges_intra
+
+def build_dataset(args, edges, non_edges, n_nodes):
+    if args.method == 'topological':
+        X = topological_features(args, edges, non_edges)
+    elif args.method == 'ids':
+        X = np.vstack((edges, non_edges))
+    elif args.method == 'distance':
+        X = distance_embedding(args.dataset, edges, non_edges)
+    else:
+        X = method_embedding(args, n_nodes, edges, non_edges)
+    y = np.hstack((np.ones(edges.shape[0]), np.zeros(non_edges.shape[0])))
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
+    return X_train, X_test, y_train, y_test
+
+def link_prediction(args, X_train, y_train, X_test, y_test, filename):
+    results = defaultdict(list)
+    if args.test:
+        results = evaluate_embedding(X_train, y_train, args.classifier, verbose=1, clf_params={'n_estimators': 100},
+                                     X_test=X_test, y_test=y_test)
+    else:
+        for i in range(args.n_iter):
+            results_iter = evaluate_embedding(X_train, y_train, args.classifier, verbose=1,
+                                              clf_params={'n_estimators': 100}, cv_splits=args.cv_splits)
+            for key in results_iter.keys():
+                results[key].extend(results_iter[key])
+
+    with open('../../results/{}/{}'.format(args.dataset, filename), 'wb') as file_save:
+        pickle.dump(results, file_save)
+
+    print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
+          np.mean(results['f1']),
+          "- Mean Precision:", np.mean(results['precision']), "- Mean Recall", np.mean(results['recall']))
 
 def chunks(l, n):
     """Divide a list of nodes `l` in `n` chunks"""

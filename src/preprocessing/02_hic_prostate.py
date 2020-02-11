@@ -1,9 +1,10 @@
-import os
 import argparse
+import os
 
 import numpy as np
 import pandas as pd
 import scipy.sparse as sps
+
 
 def main(args):
     print('Loading bin coordinates')
@@ -18,13 +19,16 @@ def main(args):
 
     chromosomes = range(1, 23) if args.chromosomes is None else args.chromosomes
 
-    dataset_path = '../../data/prostate/primary_observed_ICE'
+    dataset_path = '../../data/prostate/hic_raw/primary_observed_ICE'
     if not os.path.exists(dataset_path):
         os.makedirs(dataset_path, exist_ok=True)
 
     for i, chr_source in enumerate(chromosomes):
-        print('Chromosome ', i)
-        for chr_target in chromosomes[i + 1:]:
+        print('Chromosome ', chr_source)
+        for chr_target in chromosomes[i:]:
+            if os.path.exists(dataset_path + '/primary_observed_ICE_{}_{}_{}.npz'.format(chr_source, chr_target,
+                                                                               args.resolution)):
+                continue
             coords_chr_src = coords[coords[0] == 'chr{}'.format(chr_source)]
             coords_chr_tgt = coords[coords[0] == 'chr{}'.format(chr_target)]
 
@@ -38,6 +42,7 @@ def main(args):
                 dataset_path + '/primary_observed_ICE_{}_{}_{}.npz'.format(chr_source, chr_target, args.resolution),
                 values_chr)
     print('Hi-C data saved in sparse format in', dataset_path)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

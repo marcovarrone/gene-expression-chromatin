@@ -1,6 +1,7 @@
 import argparse
 
-from utils_link_prediction import set_n_threads, generate_embedding
+from utils_link_prediction import generate_embedding
+from utils import set_n_threads
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

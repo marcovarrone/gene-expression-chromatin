@@ -6,16 +6,6 @@ import numpy as np
 
 from utils_network_building import chromatin_threshold, intra_mask
 
-
-def save_chr_sizes(hic):
-    chr_sizes_path = '../../data/{}/chr_sizes.npy'.format(args.dataset)
-    if os.path.exists(chr_sizes_path):
-        chr_sizes = np.load(chr_sizes_path)
-        chr_sizes[args.chr_src] = hic.shape[0]
-    else:
-        chr_sizes = np.empty(23)
-    np.save(chr_sizes_path, chr_sizes)
-
 def save_disconnected_nodes(hic, dataset, filename):
     degrees = np.sum(hic, axis=0)
     disconnected_nodes = np.ravel(np.argwhere(degrees == 0))
@@ -29,8 +19,7 @@ def single_chromosome(args):
     hic = np.load(
         '../../data/{}/hic/{}.npy'.format(args.dataset, hic_name))
 
-    if args.chr_src == args.chr_tgt:
-        save_chr_sizes(hic)
+    print('Chromosome', args.chr_src)
 
     is_intra = (args.chr_src == args.chr_tgt)
     if is_intra and args.perc_intra is not None:
@@ -47,7 +36,7 @@ def single_chromosome(args):
     if not args.weighted:
         hic[hic > 0] = 1
 
-    filename = '{}{}_{}.npy'.format(hic_name, '_w' if args.weighted else '', threshold)
+    filename = '{}{}_{}'.format(hic_name, '_w' if args.weighted else '', threshold)
 
     save_disconnected_nodes(hic, args.dataset, filename)
 
@@ -55,7 +44,7 @@ def single_chromosome(args):
         data_folder = '../../data/{}/chromatin_networks/'.format(args.dataset)
         os.makedirs(data_folder, exist_ok=True)
         np.save(
-            data_folder + filename, hic)
+            data_folder + filename+'.npy', hic)
 
     if args.save_plot:
         plt.imshow(np.log1p(hic), cmap="Reds")
@@ -65,23 +54,27 @@ def single_chromosome(args):
 
 def multi_chromosome(args):
     hic_name = '{}_{}_{}_all_{}'.format(args.file, args.type, args.norm, args.window)
-    hic_full = np.load('../../data/{}/hic/{}.npy'.format(args.dataset, hic_name))
 
     shapes = [
         np.load('../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, i, i,
                                                                  args.window)).shape for i in range(1, 23)]
 
     mask = intra_mask(shapes)
+    hic_full = np.load('../../data/{}/hic/{}.npy'.format(args.dataset, hic_name))
 
     if args.perc_inter is not None:
         threshold_inter = chromatin_threshold(args.dataset, args.file, args.type, args.norm, args.window,
                                               percentile_inter=args.perc_inter)
+
         hic_inter = hic_full * np.logical_not(mask)
         hic_inter[hic_inter < threshold_inter] = 0
-        hic_inter[hic_inter > 0] = 1
+        if not args.weighted:
+            hic_inter[hic_inter > 0] = 1
+
+        hic_name += '_{}_{}_{}_all_{}'.format(args.file_inter, args.type_inter, args.norm_inter, args.window_inter)
 
     else:
-        hic_inter = intra_mask(shapes, nans=True)
+        hic_inter = intra_mask(shapes, nans=True, values=np.zeros)
 
 
     threshold_intra = chromatin_threshold(args.dataset, args.file, args.type, args.norm, args.window,
@@ -90,16 +83,17 @@ def multi_chromosome(args):
     hic_intra = hic_full * mask
 
     hic_intra[hic_intra < threshold_intra] = 0
-    hic_intra[hic_intra > 0] = 1
+    if not args.weighted:
+        hic_intra[hic_intra > 0] = 1
 
     print(np.nansum(hic_intra), np.nansum(hic_inter))
 
     hic_thr = hic_intra + hic_inter
 
     if args.perc_inter is not None:
-        filename = '{}_{}_{}'.format(hic_name, threshold_intra, threshold_inter)
+        filename = '{}{}_{}_{}'.format(hic_name,'_w' if args.weighted else '', threshold_intra, threshold_inter)
     else:
-        filename = '{}_{}'.format(hic_name, threshold_intra)
+        filename = '{}{}_{}'.format(hic_name,'_w' if args.weighted else '', threshold_intra)
 
     save_disconnected_nodes(hic_thr, args.dataset, filename)
 
@@ -120,14 +114,22 @@ def multi_chromosome(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='prostate')
+    parser.add_argument('--chr-src', type=int, default=None)
+    parser.add_argument('--chr-tgt', type=int, default=None)
+
     parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
     parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default='ICE')
     parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='primary')
-    parser.add_argument('--chr-src', type=int, default=None)
-    parser.add_argument('--chr-tgt', type=int, default=None)
     parser.add_argument('--resolution', type=int, default=40000)
     parser.add_argument('--window', type=int, default=40000)
-    parser.add_argument('--perc-intra', type=int, default=80)
+
+    parser.add_argument('--type-inter', type=str, choices=['observed', 'oe'], default='observed')
+    parser.add_argument('--norm-inter', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default='ICE')
+    parser.add_argument('--file-inter', type=str, choices=['primary', 'replicate', 'combined'], default='primary')
+    parser.add_argument('--resolution-inter', type=int, default=40000)
+    parser.add_argument('--window-inter', type=int, default=40000)
+
+    parser.add_argument('--perc-intra', type=int, default=90)
     parser.add_argument('--perc-inter', type=int, default=None)
     parser.add_argument('--single-chrom', default=False, action='store_true')
     parser.add_argument('--weighted', default=False, action='store_true')
@@ -135,13 +137,14 @@ if __name__ == '__main__':
     parser.add_argument('--save-matrix', default=False, action='store_true')
     args = parser.parse_args()
 
-    if args.single_chrom:
-        if args.chr_src and args.chr_tgt:
-            single_chromosome(args)
-        else:
+    if args.chr_src and args.chr_tgt:
+        single_chromosome(args)
+    else:
+        if not args.single_chrom:
+            multi_chromosome(args)
+
+        if args.perc_inter is None:
             for i in range(1, 23):
                 args.chr_src = i
                 args.chr_tgt = i
                 single_chromosome(args)
-    else:
-        multi_chromosome(args)

@@ -70,18 +70,50 @@ def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, window, chr_src,
                 contact_matrix[i, j] += value
 
     if chr_src == chr_tgt:
-        #plt.imshow(np.log1p(contact_matrix), cmap='Reds')
-        #plt.show()
-        contact_matrix[np.tril_indices_from(contact_matrix, k=1)] = np.nan
-        #plt.imshow(np.log1p(contact_matrix), cmap='Reds')
-        #plt.show()
+        contact_matrix[np.tril_indices_from(contact_matrix, k=0)] = np.nan
 
     return contact_matrix
 
-def main(args):
-    data_folder = '../../data/{}/'.format(args.dataset)
-    hic_folder = data_folder + 'hic/'
-    rna_folder = data_folder + 'rna/'
+def build_hic_genome(args, hic_folder):
+    hic_output_file = '{}_{}_{}_all_{}'.format(args.file, args.type, args.norm, args.window)
+    print(hic_output_file)
+
+    shapes = []
+    rows = []
+    for i in range(1, 23):
+        row = []
+        for j in range(1, 23):
+
+            if i <= j:
+                hic = np.load(
+                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, i, j, args.window))
+                row.append(hic)
+            else:
+                hic = np.load(
+                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, j, i, args.window)).T
+                hic = np.empty(hic.shape)
+                hic[:] = np.nan
+                row.append(hic)
+
+            if i == j:
+                shapes.append(hic.shape)
+        rows.append(np.hstack(row))
+    hic_full = np.vstack(rows)
+
+    if args.save_matrix:
+        os.makedirs(hic_folder, exist_ok=True)
+
+        np.save(hic_folder + hic_output_file + '.npy', hic_full)
+
+    if args.save_plot:
+        plt.figure(figsize=(7,7), dpi=600)
+        plt.imshow(np.log1p(hic_full), cmap="Reds")
+        os.makedirs('../../plots/{}/hic/'.format(args.dataset), exist_ok=True)
+        plt.savefig('../../plots/{}/hic/{}.png'.format(args.dataset, hic_output_file))
+        plt.clf()
+    return
+
+def main(args, hic_folder, rna_folder):
 
     hic_output_file = '{}_{}_{}_{}_{}_{}'.format(args.file, args.type, args.norm, args.chr_src, args.chr_tgt,
                                                  args.window)
@@ -102,16 +134,7 @@ def main(args):
             data_folder + 'hic_raw/{}_{}_{}/{}_{}_{}_{}_{}_{}.npz'.format(args.file, args.type, args.norm, args.file,
                                                                           args.type, args.norm, args.chr_src,
                                                                           args.chr_tgt, args.resolution))
-        '''if args.chr_src == args.chr_tgt:
-            plt.imshow(np.log1p(hic_matrix.toarray()), cmap="Reds")
-            plt.show()
-            # ToDo: check if it is necessary
-            hic_matrix = sps.triu(hic_matrix)
-            hic_matrix_full = hic_matrix + hic_matrix.T
-            hic_matrix_full = hic_matrix_full.todense()
-            np.fill_diagonal(hic_matrix_full, np.diagonal(hic_matrix.todense()))
-        else:
-            hic_matrix_full = hic_matrix'''
+
         contact_matrix = generate_hic(hic, df_rna_src, df_rna_tgt, args.resolution, args.window,
                                       args.chr_src, args.chr_tgt)
 
@@ -145,12 +168,17 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    data_folder = '../../data/{}/'.format(args.dataset)
+    hic_folder = data_folder + 'hic/'
+    rna_folder = data_folder + 'rna/'
+
     if args.chr_src is None or args.chr_tgt is None:
         rows = []
         for chr_src in range(1,23):
             args.chr_src = chr_src
-            #for chr_tgt in range(chr_src, 23):
-            args.chr_tgt = chr_src
-            main(args)
+            for chr_tgt in range(chr_src, 23):
+                args.chr_tgt = chr_tgt
+                main(args, hic_folder, rna_folder)
+        build_hic_genome(args, hic_folder)
     else:
-        main(args)
+        main(args, hic_folder, rna_folder)

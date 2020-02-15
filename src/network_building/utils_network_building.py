@@ -101,3 +101,4 @@ def chromatin_threshold(dataset, file, type, norm, window, percentile_intra=None
         return threshold_intra
     else:
         return threshold_inter
+

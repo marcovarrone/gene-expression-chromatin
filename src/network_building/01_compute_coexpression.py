@@ -12,9 +12,8 @@ def main(args):
 
     df = pd.read_csv(data_folder + 'expression_raw.csv')
     df = df.dropna()
-    df = df.sort_values('Transcription start site (TSS)')
+    df = df.sort_values(['Chromosome/scaffold name', 'Transcription start site (TSS)'])
 
-    # ToDo: implement single source with whole genome target
     if args.chr_src and args.chr_tgt:
         chr_src = args.chr_src
         chr_tgt = args.chr_tgt
@@ -31,14 +30,22 @@ def main(args):
     if chr_src == chr_tgt:
         df_chr_src.to_csv(rna_folder + 'expression_info_chr_{}.csv'.format(chr_src))
 
-    gene_exp_src = df_chr_src.iloc[:, 5:].to_numpy()
-    gene_exp_tgt = df_chr_tgt.iloc[:, 5:].to_numpy()
-
-    '''if chr_src == chr_tgt:
-        np.save(rna_folder + str(args.dataset) + '_chr_{}.npy'.format(chr_src), gene_exp_src)'''
+    gene_exp_src = df_chr_src.iloc[:, 6:].to_numpy()
+    gene_exp_tgt = df_chr_tgt.iloc[:, 6:].to_numpy()
 
     coexp = np.corrcoef(gene_exp_src, gene_exp_tgt)[:gene_exp_src.shape[0], -gene_exp_tgt.shape[0]:]
-    coexp[np.tril_indices_from(coexp, k=1)] = np.nan
+    coexp[np.tril_indices_from(coexp, k=0)] = np.nan
+
+    if args.chr_src == args.chr_tgt:
+        if os.path.exists('../../data/{}/chr_sizes.npy'.format(args.dataset)):
+            chr_sizes = np.load('../../data/{}/chr_sizes.npy'.format(args.dataset))
+        else:
+            chr_sizes = np.empty(23)
+
+        chr_sizes[args.chr_src] = coexp.shape[0]
+        np.save('../../data/{}/chr_sizes.npy'.format(args.dataset), chr_sizes)
+
+
 
     if args.save_plot:
         os.makedirs('../../plots/{}/coexpression'.format(args.dataset), exist_ok=True)
@@ -58,7 +65,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', type=str, default=None, required=True,
+    parser.add_argument('--dataset', type=str, default='prostate',
                         help='Name used to identify the dataset')
     parser.add_argument('--chr-src', type=int, default=None,
                         help='Source chromosome. If empty all the chromosomes are considered at once')

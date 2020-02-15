@@ -105,6 +105,7 @@ def multi_chromosome(args):
 
     if args.save_plot:
         os.makedirs('../../plots/{}/coexpression_networks/'.format(args.dataset), exist_ok=True)
+        plt.figure(figsize=(7,7), dpi=600)
         plt.imshow(coexpression_thr, cmap='Oranges')
         plt.savefig(
             '../../plots/{}/coexpression_networks/{}.png'.format(args.dataset, filename))
@@ -116,8 +117,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='prostate')
     parser.add_argument('--chr-src', type=int, default=None)
     parser.add_argument('--chr-tgt', type=int, default=None)
-    parser.add_argument('--perc-intra', type=int, default=80)  # , required=True)
-    parser.add_argument('--perc-inter', type=int, default=None)
+    parser.add_argument('--perc-intra', type=float, default=80)  # , required=True)
+    parser.add_argument('--perc-inter', type=float, default=None)
     parser.add_argument('--single-chrom', default=False, action='store_true')
     parser.add_argument('--abs', default=False, action='store_true')
     parser.add_argument('--save-plot', default=False, action='store_true')
@@ -130,7 +131,8 @@ if __name__ == '__main__':
         if not args.single_chrom:
             multi_chromosome(args)
 
-        for i in range(1, 23):
-            args.chr_src = i
-            args.chr_tgt = i
-            single_chromosome(args)
+        if args.perc_inter is None:
+            for i in range(1, 23):
+                args.chr_src = i
+                args.chr_tgt = i
+                single_chromosome(args)

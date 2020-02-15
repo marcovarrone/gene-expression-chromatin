@@ -7,7 +7,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--interactions', type=str, required=True)
-    parser.add_argument('--coexpression', type=str, default=None)
     parser.add_argument('--emb-size', type=int, default=16)
     parser.add_argument('--n-jobs', type=int, default=10)
     parser.add_argument('--force', default=False, action='store_true')
@@ -19,12 +18,8 @@ if __name__ == '__main__':
 
     set_n_threads(args.n_jobs)
 
-    if args.coexpression:
-        args.folder = 'coexpression_networks'
-        args.name = args.coexpression
-    else:
-        args.folder = 'chromatin_networks'
-        args.name = args.interactions
+    args.folder = 'chromatin_networks'
+    args.name = args.interactions
 
     interactions_path = '../../data/{}/chromatin_networks/{}.npy'.format(args.dataset, args.name)
 

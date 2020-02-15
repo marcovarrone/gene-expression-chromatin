@@ -18,6 +18,7 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
+from utils import intra_mask
 
 
 def select_classifier(classifier_name, clf_params, seed=42):
@@ -102,7 +103,7 @@ def generate_embedding(args, emb_path, interactions_path, command):
         adj = np.load(interactions_path)
         graph = from_numpy_matrix(adj)
 
-        nx.write_edgelist(graph, '../../data/{}/chromatin_networks/{}.edgelist'.format(args.dataset, args.name))
+        nx.write_weighted_edgelist(graph, '../../data/{}/chromatin_networks/{}.edgelist'.format(args.dataset, args.name))
 
         print(command)
         os.system(command)
@@ -241,8 +242,9 @@ def method_embedding(args, n_nodes, edges, non_edges):
         embeddings = np.random.rand(n_nodes, args.emb_size)
     else:
         # ToDo: if embeddings don't exist, run the embedding method
-        embeddings = np.load(
-            '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
+        #embeddings = np.load(
+        #    '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
+        embeddings = np.load('/home/varrone/Prj/pytorch-geometric/embeddings/gvae_400.npy')
 
     features_pos, features_neg = combine_embeddings(embeddings, args.aggregators, edges, non_edges)
     X = np.vstack((features_pos, features_neg))
@@ -312,14 +314,13 @@ def setup_filenames_and_folders(args, chromosome_folder):
                                                         args.method, args.embedding, args.aggregators, args.coexp_thr)
     return args, filename
 
-def load_coexpression(args, chr_src, chr_tgt, chromatin_network_name):
+def load_coexpression(args, chromatin_network_name, chrs):
     coexpression = np.load(
-        '../../data/{}/coexpression_networks/coexpression_chr_{}_{}_{}.npy'.format(args.dataset, chr_src,
-                                                                                   chr_tgt, args.coexp_thr))
+        '../../data/{}/coexpression_networks/coexpression_chr_{}_{}.npy'.format(args.dataset, chrs, args.coexp_thr))
 
-    disconnected_nodes = np.load(
-        '../../data/{}/disconnected_nodes/{}.npy'.format(
-            args.dataset, chromatin_network_name))
+    chromatin_network = np.load('../../data/{}/chromatin_networks/{}.npy'.format(args.dataset, chromatin_network_name))
+    degrees = np.nansum(chromatin_network, axis=0)
+    disconnected_nodes = np.ravel(np.argwhere(degrees == 0))
 
     print("N. disconnected nodes:", len(disconnected_nodes))
     if len(disconnected_nodes) > 0:
@@ -327,25 +328,34 @@ def load_coexpression(args, chr_src, chr_tgt, chromatin_network_name):
         coexpression[:, disconnected_nodes] = np.nan
     return coexpression
 
-def get_edges_intra(coexpression):
+def get_edges(coexpression, n_eges_intra=None, inter_ratio=1.0):
     n_nodes = coexpression.shape[0]
 
-    coexpression_intra = coexpression
+    edges = np.array(np.argwhere(coexpression == 1))
 
-    edges_intra = np.array(np.argwhere(coexpression_intra == 1))
-    edges_intra_nodes = np.unique(edges_intra)
+    if n_eges_intra:
+        if n_eges_intra > edges.shape[0]:
+            n_edges_inter = edges.shape[0]
+        else:
+            n_edges_inter = int(n_eges_intra * inter_ratio)
+        print('N. intra edges', n_eges_intra, '- N. inter edges ', edges.shape[0], '->',
+              n_edges_inter)
+        edges = edges[
+            np.random.choice(edges.shape[0], n_edges_inter, replace=False)]
 
-    non_nodes_intra = np.setdiff1d(np.arange(n_nodes), edges_intra_nodes)
+    edges_nodes = np.unique(edges)
 
-    coexpression_intra_neg = coexpression_intra.copy()
-    coexpression_intra_neg[non_nodes_intra, :] = np.nan
-    coexpression_intra_neg[:, non_nodes_intra] = np.nan
+    non_nodes = np.setdiff1d(np.arange(n_nodes), edges_nodes)
 
-    non_edges_intra = np.array(np.argwhere(coexpression_intra_neg == 0))
-    non_edges_intra = non_edges_intra[
-        np.random.choice(non_edges_intra.shape[0], edges_intra.shape[0], replace=False)]
+    coexpression_neg = coexpression.copy()
+    coexpression_neg[non_nodes, :] = np.nan
+    coexpression_neg[:, non_nodes] = np.nan
 
-    return edges_intra, non_edges_intra
+    non_edges = np.array(np.argwhere(coexpression_neg == 0))
+    non_edges = non_edges[
+        np.random.choice(non_edges.shape[0], edges.shape[0], replace=False)]
+
+    return edges, non_edges
 
 def build_dataset(args, edges, non_edges, n_nodes):
     if args.method == 'topological':
@@ -378,6 +388,15 @@ def link_prediction(args, X_train, y_train, X_test, y_test, filename):
     print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
           np.mean(results['f1']),
           "- Mean Precision:", np.mean(results['precision']), "- Mean Recall", np.mean(results['recall']))
+
+def get_mask_intra(dataset):
+    shapes = [np.load(
+        '../../data/{}/coexpression/coexpression_chr_{}_{}.npy'.format(dataset, i, i)).shape for i
+              in
+              range(1, 23)]
+
+    mask = intra_mask(shapes, nans=True, values=np.ones)
+    return mask
 
 def chunks(l, n):
     """Divide a list of nodes `l` in `n` chunks"""

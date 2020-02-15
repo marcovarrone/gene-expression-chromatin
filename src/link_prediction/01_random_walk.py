@@ -10,8 +10,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='prostate')
     parser.add_argument('--chromatin-network', type=str,
-                        default='primary_observed_ICE_all_40000_3.59')
-    parser.add_argument('--coexpression', type=str, default=None)
+                        default='')
     parser.add_argument('--emb-size', type=int, default=16)
     parser.add_argument('--n-jobs', type=int, default=10)
     parser.add_argument('--num-walks', type=int, default=10)
@@ -30,12 +29,8 @@ if __name__ == '__main__':
 
     set_n_threads(args.n_jobs)
 
-    if args.coexpression:
-        args.folder = 'coexpression'
-        args.name = args.coexpression
-    else:
-        args.folder = 'chromatin_networks'
-        args.name = args.chromatin_network
+    args.folder = 'chromatin_networks'
+    args.name = args.chromatin_network
 
     interactions_path = '../../data/{}/{}/{}.npy'.format(
         args.dataset, args.folder, args.name)
@@ -50,7 +45,7 @@ if __name__ == '__main__':
               '--number-walks {} '.format(args.num_walks) + \
               '--walk-length {} '.format(args.walk_len) + \
               '--p {} --q {} '.format(args.p, args.q) + \
-              '--window-size {} '.format(args.window)# + \
-              #'--weighted False'
+              '--window-size {} '.format(args.window) + \
+              '--weighted True'
 
     generate_embedding(args, emb_path, interactions_path, command)

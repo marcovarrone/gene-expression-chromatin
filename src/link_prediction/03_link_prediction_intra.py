@@ -19,11 +19,11 @@ def main(args):
     if not os.path.exists('../../results/{}/{}'.format(args.dataset, filename)) or args.force:
         for i in range(1, 23):
             chromatin_network_chr_name = '{}_{}_{}_{}_{}_{}_{}'.format(args.file, args.type, args.norm, i, i, args.bin_size,
-                                                         args.hic_threshold)
+                                                                         args.hic_threshold)
 
-            coexpression = load_coexpression(args, i, i, chromatin_network_chr_name)
+            coexpression = load_coexpression(args, chromatin_network_chr_name, '{}_{}'.format(i,i))
 
-            edges_intra, non_edges_intra = get_edges_intra(coexpression)
+            edges_intra, non_edges_intra = get_edges(coexpression)
 
             edges_intra += offset
             non_edges_intra += offset
@@ -54,17 +54,12 @@ if __name__ == '__main__':
     parser.add_argument('--method', type=str, default='topological',
                         choices=['distance', 'topological', 'svd', 'node2vec'])
 
-    parser.add_argument('--file-intra', type=str, required=True)
-    parser.add_argument('--type-intra', type=str, required=True)
-    parser.add_argument('--norm-intra', type=str, required=True)
-    parser.add_argument('--bin-size-intra', type=int, required=True)
-    parser.add_argument('--hic-threshold-intra', type=str, required=True)
-
-    parser.add_argument('--file-intra', type=str, required=True)
-    parser.add_argument('--type-intra', type=str, required=True)
-    parser.add_argument('--norm-intra', type=str, required=True)
-    parser.add_argument('--bin-size-intra', type=int, required=True)
-    parser.add_argument('--hic-threshold-intra', type=str, required=True)
+    parser.add_argument('--file', type=str, required=True)
+    parser.add_argument('--type', type=str, required=True)
+    parser.add_argument('--norm', type=str, required=True)
+    parser.add_argument('--bin-size', type=int, required=True)
+    parser.add_argument('--hic-threshold', type=str, required=True)
+    parser.add_argument('--weighted', default=False, action='store_true')
 
     parser.add_argument('--edge-features', default=True, action='store_true')
     parser.add_argument('--aggregators', nargs='*', default=['avg', 'l1'])

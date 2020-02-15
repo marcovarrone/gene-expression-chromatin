@@ -14,15 +14,15 @@ def main(args):
     if args.chr_tgt is None:
         args.chr_tgt = args.chr_src
 
-    args.chromatin_network_name = '{}_{}_{}_{}_{}_{}_{}'.format(args.file, args.type, args.norm, args.chr_src,
-                                                                args.chr_tgt, args.bin_size, args.hic_threshold)
+    args.chromatin_network_name = '{}_{}_{}_{}_{}_{}{}_{}'.format(args.file, args.type, args.norm, args.chr_src,
+                                                                args.chr_tgt, args.bin_size, '_w' if args.weighted else '', args.hic_threshold)
 
     args, filename = setup_filenames_and_folders(args, args.chr_src)
 
     if not os.path.exists('../../results/{}/{}'.format(args.dataset, filename)) or args.force:
-        coexpression = load_coexpression(args, args.chr_src, args.chr_tgt, args.chromatin_network_name)
+        coexpression = load_coexpression(args, args.chromatin_network_name, '{}_{}'.format(args.chr_src, args.chr_tgt))
 
-        edges, non_edges = get_edges_intra(coexpression)
+        edges, non_edges = get_edges(coexpression)
 
         X_train, X_test, y_train, y_test = build_dataset(args, edges, non_edges, coexpression.shape[0])
         print(X_train.shape)
@@ -41,13 +41,14 @@ if __name__ == '__main__':
     parser.add_argument('--n-iter', type=int, default=1)
     parser.add_argument('--cv-splits', type=int, default=5)
     parser.add_argument('--method', type=str, default='node2vec',
-                        choices=['distance', 'topological', 'svd', 'node2vec'])
+                        choices=['random','distance', 'topological', 'svd', 'node2vec', 'vgae'])
 
     parser.add_argument('--file', type=str, required=True)
     parser.add_argument('--type', type=str, required=True)
     parser.add_argument('--norm', type=str, required=True)
     parser.add_argument('--bin-size', type=int, required=True)
     parser.add_argument('--hic-threshold', type=str, required=True)
+    parser.add_argument('--weighted', default=False, action='store_true')
 
     parser.add_argument('--aggregators', nargs='*', default=['hadamard'])
     parser.add_argument('--classifier', default='rf', choices=['mlp', 'lr', 'svm', 'rf'])

@@ -7,75 +7,42 @@ import pandas as pd
 import scipy.sparse as sps
 
 
-def get_gene_bins(gene, bin_size, window, bins):
-    tss = gene['Transcription start site (TSS)']
-    tss_bin = np.digitize(tss, bins)
-    start = tss_bin - int(np.ceil((window / 2) / bin_size))
-    end = tss_bin + int(np.floor((window / 2) / bin_size))
-    return start if start > 0 else 0, end
-
-
-def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, window, chr_src, chr_tgt):
+def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, chr_src, chr_tgt):
     contact_matrix = np.zeros((gene_info_src.shape[0], gene_info_tgt.shape[0]))
 
     tsses = np.concatenate(
         (gene_info_src['Transcription start site (TSS)'], gene_info_tgt['Transcription start site (TSS)']))
 
     bins = np.arange(0, np.max(tsses) + resolution, resolution)
-    if resolution == window:
-        # All combinations of gene indexes
-        combs = np.array(np.meshgrid(range(contact_matrix.shape[0]), range(contact_matrix.shape[1]))).T.reshape(-1, 2)
+    # All combinations of gene indexes
+    combs = np.array(np.meshgrid(range(contact_matrix.shape[0]), range(contact_matrix.shape[1]))).T.reshape(-1, 2)
 
-        # Extract the bin relative to each gene's TSS
-        idxs_src = np.digitize(gene_info_src['Transcription start site (TSS)'][combs[:, 0]], bins) - 1
-        idxs_tgt = np.digitize(gene_info_tgt['Transcription start site (TSS)'][combs[:, 1]], bins) - 1
+    # Extract the bin relative to each gene's TSS
+    idxs_src = np.digitize(gene_info_src['Transcription start site (TSS)'][combs[:, 0]], bins) - 1
+    idxs_tgt = np.digitize(gene_info_tgt['Transcription start site (TSS)'][combs[:, 1]], bins) - 1
 
-        idxs_src_out_boundary = np.where(idxs_src >= hic.shape[0])[0]
-        idxs_tgt_out_boundary = np.where(idxs_tgt >= hic.shape[1])[0]
+    idxs_src_out_boundary = np.where(idxs_src >= hic.shape[0])[0]
+    idxs_tgt_out_boundary = np.where(idxs_tgt >= hic.shape[1])[0]
 
-        if idxs_src_out_boundary.shape[0] != 0 or idxs_tgt_out_boundary.shape[0] != 0:
-            print("Warning: some genes are out of boundary from Hi-C!")
-            idxs_out_boundary = np.concatenate((idxs_src_out_boundary, idxs_tgt_out_boundary))
+    if idxs_src_out_boundary.shape[0] != 0 or idxs_tgt_out_boundary.shape[0] != 0:
+        print("Warning: some genes are out of boundary from Hi-C!")
+        idxs_out_boundary = np.concatenate((idxs_src_out_boundary, idxs_tgt_out_boundary))
 
-            combs = np.delete(combs, idxs_out_boundary, axis=0)
-            idxs_src = np.delete(idxs_src, idxs_out_boundary, axis=0)
-            idxs_tgt = np.delete(idxs_tgt, idxs_out_boundary, axis=0)
+        combs = np.delete(combs, idxs_out_boundary, axis=0)
+        idxs_src = np.delete(idxs_src, idxs_out_boundary, axis=0)
+        idxs_tgt = np.delete(idxs_tgt, idxs_out_boundary, axis=0)
 
-        # Set the contact matrix values to the values of Hi-C at the extracted bins
-        contact_matrix[combs[:, 0], combs[:, 1]] = np.ravel(hic[idxs_src, idxs_tgt])
-    else:
-        # ToDo: vectorize
-        for i, (idx1, gene1) in enumerate(gene_info_src.iterrows()):
-            start1, end1 = get_gene_bins(gene1, resolution, window, bins)
-            print("Processing gene", i, "/", gene_info_src.shape[0])
-
-            for j, (idx2, gene2) in enumerate(gene_info_tgt.iterrows()):
-                start2, end2 = get_gene_bins(gene2, resolution, window, bins)
-                if args.window == 0:
-                    end1 += 1
-                    end2 += 1
-
-                mat = hic[start1:end1, start2:end2].A
-                if args.aggregation == 'median':
-                    value = np.median(np.median(mat))
-                elif args.aggregation == 'max':
-                    value = np.max(mat)
-                elif args.aggregation == 'sum':
-                    value = np.sum(mat)
-                else:
-                    if window == resolution:
-                        value = np.sum(mat)
-                    else:
-                        raise ValueError
-                contact_matrix[i, j] += value
+    # Set the contact matrix values to the values of Hi-C at the extracted bins
+    contact_matrix[combs[:, 0], combs[:, 1]] = np.ravel(hic[idxs_src, idxs_tgt])
 
     if chr_src == chr_tgt:
         contact_matrix[np.tril_indices_from(contact_matrix, k=0)] = np.nan
 
     return contact_matrix
 
+
 def build_hic_genome(args, hic_folder):
-    hic_output_file = '{}_{}_{}_all_{}'.format(args.file, args.type, args.norm, args.window)
+    hic_output_file = '{}_{}_{}_all_{}'.format(args.file, args.type, args.norm, args.resolution)
     print(hic_output_file)
 
     shapes = []
@@ -86,11 +53,13 @@ def build_hic_genome(args, hic_folder):
 
             if i <= j:
                 hic = np.load(
-                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, i, j, args.window))
+                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, i,
+                                                                     j, args.resolution))
                 row.append(hic)
             else:
                 hic = np.load(
-                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, j, i, args.window)).T
+                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, j,
+                                                                     i, args.resolution)).T
                 hic = np.empty(hic.shape)
                 hic[:] = np.nan
                 row.append(hic)
@@ -106,17 +75,17 @@ def build_hic_genome(args, hic_folder):
         np.save(hic_folder + hic_output_file + '.npy', hic_full)
 
     if args.save_plot:
-        plt.figure(figsize=(7,7), dpi=600)
+        plt.figure(figsize=(7, 7), dpi=600)
         plt.imshow(np.log1p(hic_full), cmap="Reds")
         os.makedirs('../../plots/{}/hic/'.format(args.dataset), exist_ok=True)
         plt.savefig('../../plots/{}/hic/{}.png'.format(args.dataset, hic_output_file))
         plt.clf()
     return
 
-def main(args, hic_folder, rna_folder):
 
+def main(args, hic_folder, rna_folder):
     hic_output_file = '{}_{}_{}_{}_{}_{}'.format(args.file, args.type, args.norm, args.chr_src, args.chr_tgt,
-                                                 args.window)
+                                                 args.resolution)
 
     print(hic_output_file)
 
@@ -135,8 +104,10 @@ def main(args, hic_folder, rna_folder):
                                                                           args.type, args.norm, args.chr_src,
                                                                           args.chr_tgt, args.resolution))
 
-        contact_matrix = generate_hic(hic, df_rna_src, df_rna_tgt, args.resolution, args.window,
-                                      args.chr_src, args.chr_tgt)
+        hic = np.log1p(hic.toarray())
+        np.fill_diagonal(hic, 0)
+
+        contact_matrix = generate_hic(hic, df_rna_src, df_rna_tgt, args.resolution, args.chr_src, args.chr_tgt)
 
     if args.save_matrix:
         os.makedirs(hic_folder, exist_ok=True)
@@ -148,6 +119,7 @@ def main(args, hic_folder, rna_folder):
         os.makedirs('../../plots/{}/hic/'.format(args.dataset), exist_ok=True)
         plt.savefig('../../plots/{}/hic/{}.png'.format(args.dataset, hic_output_file))
         plt.clf()
+
 
 if __name__ == '__main__':
 
@@ -161,10 +133,10 @@ if __name__ == '__main__':
     parser.add_argument('--chr-src', type=int, default=None)
     parser.add_argument('--chr-tgt', type=int, default=None)
     parser.add_argument('--resolution', type=int, default=40000)
-    parser.add_argument('--window', type=int, default=40000)
     parser.add_argument('--save-matrix', default=False, action='store_true')
-    parser.add_argument('--save-plot', default=True, action='store_true')
-    parser.add_argument('--force', default=True, action='store_true')
+    parser.add_argument('--save-plot', default=False, action='store_true')
+    parser.add_argument('--force', default=False, action='store_true')
+    parser.add_argument('--genome-wide', default=False, action='store_true')
 
     args = parser.parse_args()
 
@@ -174,11 +146,17 @@ if __name__ == '__main__':
 
     if args.chr_src is None or args.chr_tgt is None:
         rows = []
-        for chr_src in range(1,23):
+        for chr_src in range(1, 23):
             args.chr_src = chr_src
-            for chr_tgt in range(chr_src, 23):
+            if args.genome_wide:
+                chromosomes_target = range(chr_src, 23)
+            else:
+                chromosomes_target = [chr_src]
+
+            for chr_tgt in chromosomes_target:
                 args.chr_tgt = chr_tgt
                 main(args, hic_folder, rna_folder)
-        build_hic_genome(args, hic_folder)
+        if args.genome_wide:
+            build_hic_genome(args, hic_folder)
     else:
         main(args, hic_folder, rna_folder)

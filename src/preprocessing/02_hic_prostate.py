@@ -26,7 +26,12 @@ def main(args):
 
     for i, chr_source in enumerate(chromosomes):
         print('Chromosome ', chr_source)
-        for chr_target in chromosomes[i:]:
+        if args.inter:
+            chromosomes_target = chromosomes[i:]
+        else:
+            chromosomes_target = [chr_source]
+
+        for chr_target in chromosomes_target:
             if os.path.exists(dataset_path + '/primary_observed_ICE_{}_{}_{}.npz'.format(chr_source, chr_target,
                                                                                          args.window)):
                 print('File already existing. Skip.')
@@ -38,6 +43,7 @@ def main(args):
 
             min_tgt = np.min(coords_chr_tgt[3])
             max_tgt = np.max(coords_chr_tgt[3])
+
             values_chr = values[min_src:max_src, min_tgt:max_tgt]
             values_chr = values_chr.toarray()
             values_chr = np.add.reduceat(values_chr, np.arange(0, values_chr.shape[0], args.window // args.resolution),

@@ -28,6 +28,8 @@ def select_classifier(classifier_name, clf_params, seed=42):
         classifier = SVC(gamma='scale')
     elif classifier_name == 'rf':
         classifier = RandomForestClassifier(n_jobs=10, **clf_params)
+    elif classifier_name == 'random':
+        classifier = classifier_name
     else:
         classifier = LogisticRegression(solver='lbfgs')
     return classifier
@@ -47,22 +49,24 @@ def confusion_matrix_distinct(y_true, y_pred, ids, mask):
 
 def evaluate(X_train, y_train, X_test, y_test, classifier, mask):
     ids = X_test[:, :2].astype(int)
+    if classifier == 'random':
+        y_pred = np.random.randint(0, 2, size=y_test.shape)
+    else:
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train[:, 2:], y_train)
+        X_test_scaled = scaler.transform(X_test[:, 2:])
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train[:, 2:], y_train)
-    X_test_scaled = scaler.transform(X_test[:, 2:])
-
-    start = time()
-    classifier.fit(X_train_scaled, y_train)
-    y_pred = classifier.predict(X_test_scaled)
-    end = time()
+        start = time()
+        classifier.fit(X_train_scaled, y_train)
+        y_pred = classifier.predict(X_test_scaled)
+        end = time()
 
     if mask is not None:
         confusion_matrix_distinct(y_test, y_pred, ids, mask)
 
     results = {}
     results['roc'] = roc_auc_score(y_test, y_pred)
-    results['acc'] = classifier.score(X_test_scaled, y_test)
+    results['acc'] = accuracy_score(y_test, y_pred)
     results['f1'] = f1_score(y_test, y_pred)
     results['precision'] = precision_score(y_test, y_pred)
     results['recall'] = recall_score(y_test, y_pred)
@@ -151,7 +155,7 @@ def from_numpy_matrix(A):
 def distance_embedding(dataset, edges, non_edges, chr_src=None):
     if chr_src is None:
         gene_info = pd.read_csv(
-            '../../data/{}/rna/expression_info_chr_all_rna.csv'.format(
+            '../../data/{}/rna/expression_info_chr_all.csv'.format(
                 dataset))
     else:
         gene_info = pd.read_csv(
@@ -242,9 +246,8 @@ def method_embedding(args, n_nodes, edges, non_edges):
         embeddings = np.random.rand(n_nodes, args.emb_size)
     else:
         # ToDo: if embeddings don't exist, run the embedding method
-        #embeddings = np.load(
-        #    '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
-        embeddings = np.load('/home/varrone/Prj/pytorch-geometric/embeddings/gvae_400.npy')
+        embeddings = np.load(
+            '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method, args.embedding))
 
     features_pos, features_neg = combine_embeddings(embeddings, args.aggregators, edges, non_edges)
     X = np.vstack((features_pos, features_neg))
@@ -306,6 +309,9 @@ def setup_filenames_and_folders(args, chromosome_folder):
 
     os.makedirs('../../results/{}/chr_{}'.format(args.dataset, chromosome_folder), exist_ok=True)
     os.makedirs('../../results/{}/predictions/chr_{}'.format(args.dataset, chromosome_folder), exist_ok=True)
+    if args.test:
+        os.makedirs('../../results/{}/test/chr_{}'.format(args.dataset, chromosome_folder), exist_ok=True)
+        os.makedirs('../../results/{}/test/predictions/chr_{}'.format(args.dataset, chromosome_folder), exist_ok=True)
     if args.method == 'topological':
         filename = '{}chr_{}/{}_{}_{}_{}.pkl'.format('test/' if args.test else '', chromosome_folder, args.classifier,
                                                      args.method, args.chromatin_network_name, args.aggregators)

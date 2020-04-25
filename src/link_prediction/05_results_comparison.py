@@ -11,12 +11,11 @@ boxplot_palette = ['C4', 'C3', 'C2', 'C0', 'C1']
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='MCF7')
+    parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--chrs', type=int, nargs='*', default=-1)
     parser.add_argument('--metric', type=str, choices=['acc', 'roc', 'f1'], default='acc')
-    parser.add_argument('--embs', nargs='*', type=str)
-    parser.add_argument('--plot', type=str, default='box')
-    #parser.add_argument('--classifier', type=str, choices=['mlp', 'lr'], default='mlp')
+    parser.add_argument('--embs', nargs='*', type=str, required=True)
+    parser.add_argument('--plot', type=str, default='box', choices=['bar', 'box'])
     parser.add_argument('--full', default=False, action='store_true')
     parser.add_argument('--save-fig', default=False, action='store_true')
     parser.add_argument('--scatter', default=False, action='store_true')
@@ -42,19 +41,8 @@ if __name__ == '__main__':
         #    label += 'hic_'
         #elif 'chr' in model:
         #    label += 'coexp_'
-        if 'gae' in model:
-            label += 'gae'
-        elif 'pca' in model:
-            label += 'pca'
-        elif 'svd' in model:
+        if 'svd' in model:
             label += 'SVD'
-        elif 'line' in model:
-            label += 'line'
-
-        elif 'ids' in model:
-            label += 'ids'
-        elif 'trivial' in model:
-            label += 'trivial'
         elif 'distance' in model:
             label += 'Distance'
         elif 'node2vec' in model:
@@ -105,21 +93,22 @@ if __name__ == '__main__':
         labels_name.append(label_name)
 
         if args.full:
-            print('results/{}/chr_all/{}.pkl'.format(args.dataset,model.format(chrs, chrs)))
-            with open('results/{}/chr_all/{}.pkl'.format(args.dataset, model.format(chrs, chrs)),
+            print('../../results/{}/chr_all/{}.pkl'.format(args.dataset,model.format(chrs, chrs)))
+            with open('../../results/{}/chr_all/{}.pkl'.format(args.dataset, model.format(chrs, chrs)),
                       'rb') as file_load:
                 results = pickle.load(file_load)
                 scores.append(results[args.metric])
+                print(scores)
         elif type(chrs) == int:
-            print('results/{}/chr_{:02d}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)))
-            with open('results/{}/chr_{:02d}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)), 'rb') as file_load:
+            print('../../results/{}/chr_{}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)))
+            with open('../../results/{}/chr_{}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)), 'rb') as file_load:
                 results = pickle.load(file_load)
                 scores.append(results[args.metric])
             #rocs.append(
             #    np.load('results/{}/chr_{}/{}.npy'.format(args.dataset, chrs, model)))
         elif type(chrs) == str:
-            print('results/{}/chr_{}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)))
-            with open('results/{}/chr_{}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)), 'rb') as file_load:
+            print('../../results/{}/chr_{}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)))
+            with open('../../results/{}/chr_{}/{}.pkl'.format(args.dataset, chrs, model.format(chrs, chrs)), 'rb') as file_load:
                 results = pickle.load(file_load)
                 scores.append(np.mean(results[args.metric]))
         else:
@@ -127,7 +116,7 @@ if __name__ == '__main__':
             for chrom in chrs:
                 #roc_chr = np.load(
                 #    'results/{}/chr_{}/{}.npy'.format(args.dataset, chrom, model))
-                with open('results/{}/chr_{:02d}/{}.pkl'.format(args.dataset, chrom, model.format(chrom, chrom)), 'rb') as file_load:
+                with open('../../results/{}/chr_{}/{}.pkl'.format(args.dataset, chrom, model.format(chrom, chrom)), 'rb') as file_load:
                     results = pickle.load(file_load)
                     score = np.mean(results[args.metric])
                     print(chrom, score)
@@ -135,9 +124,9 @@ if __name__ == '__main__':
                     scores_chrs.append(score)
             scores.append(scores_chrs)
             scores_dict[model] = scores_chrs
-    print(np.mean(scores), np.std(scores))
-
-    print(labels_name)
+    print(np.mean(np.array(list(scores_dict.values())), axis=1))
+    #print(np.mean(list(scores_dict.values())), np.std(scores))
+    #print(labels_name)
     if type(chrs) == int:
         scores = np.vstack(scores).T
         df_scores = pd.DataFrame(scores)
@@ -145,11 +134,19 @@ if __name__ == '__main__':
         ax.set_ylim(0.4, 0.9)
     else:
         if not args.scatter:
+            print(len(scores))
+            #df_scores = pd.DataFrame()
+
+            #for i, scores_list in enumerate(scores):
+             #   idxs = np.array([i]*len(scores_list))
+            #    values = np.array(scores_list)
+                #df_scores.append(pd.DataFrame)
             scores = np.vstack(scores).T
             df_scores = pd.DataFrame(scores)
             if args.plot == 'box':
                 ax = sns.boxplot(data=df_scores, palette=boxplot_palette)
                 ax.set_ylim(0.4, 0.8)
+                sns.stripplot(data=df_scores, color='black', size=3)
             else:
                 ax = sns.barplot(data=df_scores, palette=boxplot_palette)
                 ax.set_ylim(0.4, 0.8)
@@ -163,10 +160,10 @@ if __name__ == '__main__':
     plt.grid(axis='y')
     # plt.xlabel('methods')
     if args.chrs == -1 or args.chrs == 'all':
-        plt.savefig('plots/{}/{}_chr_all_{}.pdf'.format(args.dataset, args.metric, '_'.join(labels_name)), bbox_inches='tight', transparent=True)
+        plt.savefig('../../plots/{}/{}_{}_chr_all_{}.pdf'.format(args.dataset,args.dataset, args.metric, '_'.join(labels_name)), bbox_inches='tight', transparent=True)
     elif type(chrs) == int or len(chrs) == 1:
-        plt.savefig('plots/{}/{}_chr_{:02d}_{}.pdf'.format(args.dataset, args.metric, args.chrs, '_'.join(labels_name)), bbox_inches='tight', transparent=True)
+        plt.savefig('../../plots/{}/{}_{}_chr_{:02d}_{}.pdf'.format(args.dataset, args.dataset, args.metric, args.chrs, '_'.join(labels_name)), bbox_inches='tight', transparent=True)
     else:
-        plt.savefig('plots/{}/{}_chr_{}_{}{}.pdf'.format(args.dataset, args.metric, '_'.join(list(map(str, args.chrs))), '_'.join(labels_name),
+        plt.savefig('../../plots/{}/{}_{}_chr_{}_{}{}.pdf'.format(args.dataset, args.dataset, args.metric, '_'.join(list(map(str, args.chrs))), '_'.join(labels_name),
                                                         '_scatter' if args.scatter else ''), bbox_inches='tight', transparent=True)
     plt.show()

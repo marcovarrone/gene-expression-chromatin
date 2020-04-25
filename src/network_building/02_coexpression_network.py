@@ -73,7 +73,7 @@ def multi_chromosome(args):
     else:
         filename = 'coexpression_chr_all_{}'.format(args.perc_intra)
 
-    if not os.path.exists(data_folder + '/' + filename + '.npy'.format(filename)):
+    if not os.path.exists(data_folder + '/' + filename + '.npy'.format(filename)) or args.force:
         coexpression_full = np.load('../../data/{}/coexpression/coexpression_chr_all_all.npy'.format(args.dataset))
 
         shapes = [np.load('../../data/{}/coexpression/coexpression_chr_{}_{}.npy'.format(args.dataset, i, i)).shape for
@@ -121,12 +121,13 @@ if __name__ == '__main__':
     parser.add_argument('--chr-src', type=int, default=None)
     parser.add_argument('--chr-tgt', type=int, default=None)
     parser.add_argument('--perc-intra', type=float, default=None)  # , required=True)
-    #parser.add_argument('--perc-inter', type=float, default=None)
+    parser.add_argument('--perc-inter', type=float, default=None)
     parser.add_argument('--single-chrom', default=False, action='store_true')
-    parser.add_argument('--inter', default=False, action='store_true')
     parser.add_argument('--abs', default=False, action='store_true')
     parser.add_argument('--save-plot', default=False, action='store_true')
     parser.add_argument('--save-matrix', default=False, action='store_true')
+    parser.add_argument('--force', default=False, action='store_true')
+    parser.add_argument('--weight', type=float, default=0.1)
     args = parser.parse_args()
 
     if args.chr_src and args.chr_tgt:

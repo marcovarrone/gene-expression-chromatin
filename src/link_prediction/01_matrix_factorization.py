@@ -1,7 +1,8 @@
 import argparse
+import os
 
-from utils_link_prediction import generate_embedding
 from utils import set_n_threads
+from utils_link_prediction import generate_embedding
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -23,12 +24,18 @@ if __name__ == '__main__':
 
     interactions_path = '../../data/{}/chromatin_networks/{}.npy'.format(args.dataset, args.name)
 
-    emb_path = '{}_es{}'.format(args.interactions, args.emb_size)
+    emb_path = '{}_es{}'.format(args.chromatin_network, args.emb_size)
 
-    command = 'bionev --input ../../data/{}/chromatin_networks/{}.edgelist '.format(args.dataset, args.interactions) + \
-              '--output ../../data/{}/embeddings/{}/{}.txt '.format(args.dataset, args.method.lower(), emb_path) + \
-              '--method {} --task {} '.format(args.method, args.task) + \
-              '--dimensions {} '.format(args.emb_size) + \
-              '--weighted True' if args.weighted else ''
 
-    generate_embedding(args, emb_path, interactions_path, command)
+    if not os.path.exists(
+            '../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method.lower(), emb_path)) or args.force:
+        command = 'bionev --input ../../data/{}/chromatin_networks/{}.edgelist '.format(args.dataset,
+                                                                                        args.chromatin_network) + \
+                  '--output ../../data/{}/embeddings/{}/{}.txt '.format(args.dataset, args.method.lower(), emb_path) + \
+                  '--method {} --task {} '.format(args.method, args.task) + \
+                  '--dimensions {} '.format(args.emb_size) + \
+                  '--weighted True' if args.weighted else ''
+
+        generate_embedding(args, emb_path, interactions_path, command)
+    else:
+        print(print('Embeddings already computed for {}. Skipped.'.format('../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method.lower(), emb_path))))

@@ -42,8 +42,8 @@ def generate_hic(hic, gene_info_src, gene_info_tgt, resolution, chr_src, chr_tgt
 
 
 def build_hic_genome(args, hic_folder):
-    hic_output_file = '{}_{}_{}_all_{}'.format(args.file, args.type, args.norm, args.resolution)
-    print(hic_output_file)
+    hic_output_file = '{}_all_{}'.format(args.type, args.resolution)
+
 
     shapes = []
     rows = []
@@ -53,12 +53,12 @@ def build_hic_genome(args, hic_folder):
 
             if i <= j:
                 hic = np.load(
-                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, i,
+                    '../../data/{}/hic/{}_{}_{}_{}.npy'.format(args.dataset, args.type, i,
                                                                      j, args.resolution))
                 row.append(hic)
             else:
                 hic = np.load(
-                    '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(args.dataset, args.file, args.type, args.norm, j,
+                    '../../data/{}/hic/{}_{}_{}_{}.npy'.format(args.dataset, args.type, j,
                                                                      i, args.resolution)).T
                 hic = np.empty(hic.shape)
                 hic[:] = np.nan
@@ -84,35 +84,38 @@ def build_hic_genome(args, hic_folder):
 
 
 def main(args, hic_folder, rna_folder):
-    hic_output_file = '{}_{}_{}_{}_{}_{}'.format(args.file, args.type, args.norm, args.chr_src, args.chr_tgt,
+    hic_output_file = '{}_{}_{}_{}'.format(args.type, args.chr_src, args.chr_tgt,
                                                  args.resolution)
+    if not os.path.exists(hic_folder + hic_output_file + '.npy') or args.force:
+        print(hic_output_file)
 
-    print(hic_output_file)
+        df_rna_src = pd.read_csv(
+            rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_src), index_col=0)
 
-    df_rna_src = pd.read_csv(
-        rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_src))
+        df_rna_tgt = pd.read_csv(
+            rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_tgt), index_col=0)
 
-    df_rna_tgt = pd.read_csv(
-        rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_tgt))
+        if os.path.exists(hic_folder + hic_output_file + '.npy') and not args.force:
+            print("Data already present. Loading from file.")
+            contact_matrix = np.load(hic_folder + hic_output_file + '.npy')
+        else:
+            hic = sps.load_npz(
+                data_folder + 'hic_raw/hic_raw_{}_{}_{}.npz'.format(args.chr_src,
+                                                                              args.chr_tgt, args.resolution))
 
-    if os.path.exists(hic_folder + hic_output_file + '.npy') and not args.force:
-        print("Data already present. Loading from file.")
-        contact_matrix = np.load(hic_folder + hic_output_file + '.npy')
+            hic = np.log1p(hic.toarray())
+            np.fill_diagonal(hic, 0)
+
+            contact_matrix = generate_hic(hic, df_rna_src, df_rna_tgt, args.resolution, args.chr_src, args.chr_tgt)
+
+        if args.save_matrix:
+            os.makedirs(hic_folder, exist_ok=True)
+
+            np.save(hic_folder + hic_output_file + '.npy', contact_matrix)
     else:
-        hic = sps.load_npz(
-            data_folder + 'hic_raw/{}_{}_{}/{}_{}_{}_{}_{}_{}.npz'.format(args.file, args.type, args.norm, args.file,
-                                                                          args.type, args.norm, args.chr_src,
-                                                                          args.chr_tgt, args.resolution))
-
-        hic = np.log1p(hic.toarray())
-        np.fill_diagonal(hic, 0)
-
-        contact_matrix = generate_hic(hic, df_rna_src, df_rna_tgt, args.resolution, args.chr_src, args.chr_tgt)
-
-    if args.save_matrix:
-        os.makedirs(hic_folder, exist_ok=True)
-
-        np.save(hic_folder + hic_output_file + '.npy', contact_matrix)
+        print('Gene selection for chr.',args.chr_src,'already computed. Skipped')
+        if args.save_plot:
+            contact_matrix = np.load(hic_folder + hic_output_file + '.npy')
 
     if args.save_plot:
         plt.imshow(np.log1p(contact_matrix), cmap="Reds")
@@ -126,10 +129,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # ToDo: add description
-    parser.add_argument('-d', '--dataset', type=str, default='prostate')
+    parser.add_argument('-d', '--dataset', type=str, default='lung_imr90')
     parser.add_argument('--type', type=str, choices=['observed', 'oe'], default='observed')
-    parser.add_argument('--norm', type=str, choices=['NONE', 'VC', 'VC_SQRT', 'KR', 'ICE'], default='ICE')
-    parser.add_argument('--file', type=str, choices=['primary', 'replicate', 'combined'], default='primary')
     parser.add_argument('--chr-src', type=int, default=None)
     parser.add_argument('--chr-tgt', type=int, default=None)
     parser.add_argument('--resolution', type=int, default=40000)

@@ -1,10 +1,9 @@
 import os
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
-from utils import intra_mask
-
+from utils import intra_mask, block_matrix
 
 
 def coexpression_threshold(dataset, percentile_intra=None, percentile_inter=None):
@@ -40,60 +39,22 @@ def coexpression_threshold(dataset, percentile_intra=None, percentile_inter=None
         return threshold_inter
 
 
-def chromatin_threshold(dataset, file, type, norm, window, percentile_intra=None, percentile_inter=None, ):
+def chromatin_threshold(hic, mask=None, percentile_intra=None, percentile_inter=None):
     if not percentile_intra and not percentile_inter:
         raise ValueError(
             'Either one parameter between percentile_intra and percentile_inter must be different from zero.')
 
-    if os.path.exists('../../data/prostate/hic/{}_{}_{}_all_{}.npy'.format(file, type, norm, window)):
-        hic_full = np.load('../../data/prostate/hic/{}_{}_{}_all_{}.npy'.format(file, type, norm, window))
-        try:
-            shapes = [
-                np.load('../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(dataset, file, type, norm, i, i, window)).shape
-                for i in range(1, 23)]
-        except FileNotFoundError:
-            raise ValueError('You need to compute the co-expression for all the chromosomes first.')
-    else:
-        print('Full genome-wide Hi-C not present. Building...')
-        shapes = []
-        rows = []
-        for i in range(1, 23):
-            row = []
-            for j in range(1, 23):
-
-                if i <= j:
-                    hic = np.load(
-                        '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(dataset, file, type, norm, i, j, window))
-                    row.append(hic)
-                else:
-                    hic = np.load(
-                        '../../data/{}/hic/{}_{}_{}_{}_{}_{}.npy'.format(dataset, file, type, norm, j, i, window)).T
-                    hic = np.empty(hic.shape)
-                    hic[:] = np.nan
-                    row.append(hic)
-
-                if i == j:
-                    shapes.append(hic.shape)
-            rows.append(np.hstack(row))
-        hic_full = np.vstack(rows)
-        np.save('../../data/{}/hic/{}_{}_{}_all_{}.npy'.format(dataset, file, type, norm, window), hic_full)
-        plt.figure(figsize=(7, 7), dpi=600)
-        plt.imshow(np.log1p(hic_full), cmap='Reds')
-        plt.savefig('../../plots/{}/hic/{}_{}_{}_all_{}.png'.format(dataset, file, type, norm, window))
-        print('Full genome-wide Hi-C saved in ../../data/{}/hic/{}_{}_{}_all_{}.npy'.format(dataset, file, type, norm,
-                                                                                            window))
-
-    mask = intra_mask(shapes)
-
-    if percentile_intra:
-        hic_intra = hic_full * mask
-        hic_intra[hic_intra == 0] = np.nan
-        threshold_intra = np.round(np.nanpercentile(hic_intra, percentile_intra), 2)
-
     if percentile_inter:
-        hic_inter = hic_full * np.logical_not(mask)
+        if percentile_intra:
+            hic_intra = hic * mask
+            hic_intra[hic_intra == 0] = np.nan
+            threshold_intra = np.round(np.nanpercentile(hic_intra, percentile_intra), 2)
+
+        hic_inter = hic * np.logical_not(mask)
         hic_inter[hic_inter == 0] = np.nan
         threshold_inter = np.round(np.nanpercentile(hic_inter, percentile_inter), 2)
+    else:
+        threshold_intra = np.round(np.nanpercentile(hic[hic > 0], percentile_intra), 2)
 
     if percentile_intra and percentile_inter:
         return threshold_intra, threshold_inter
@@ -102,3 +63,27 @@ def chromatin_threshold(dataset, file, type, norm, window, percentile_intra=None
     else:
         return threshold_inter
 
+def build_full_hic(dataset, type,window):
+    if not os.path.exists('../../data/{}/hic/{}_all_{}.npy'.format(dataset, type, window)):
+        rows = []
+        for i in range(1, 23):
+            row = []
+            for j in range(1, 23):
+
+                if i <= j:
+                    hic = np.load(
+                        '../../data/{}/hic/{}_{}_{}_{}.npy'.format(dataset, type, i, j, window))
+                    row.append(hic)
+                else:
+                    hic = np.load(
+                        '../../data/{}/hic/{}_{}_{}_{}.npy'.format(dataset, type, j, i, window)).T
+                    hic = np.empty(hic.shape)
+                    hic[:] = np.nan
+                    row.append(hic)
+            rows.append(np.hstack(row))
+        hic_full = np.vstack(rows)
+        np.save('../../data/{}/hic/{}_all_{}.npy'.format(dataset, type, window), hic_full)
+        print('Full genome-wide Hi-C saved in ../../data/{}/hic/{}_all_{}.npy'.format(dataset, type, window))
+    else:
+        hic_full = np.load('../../data/{}/hic/{}_all_{}.npy'.format(dataset, type, window))
+    return hic_full

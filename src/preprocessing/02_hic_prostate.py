@@ -20,7 +20,7 @@ def main(args):
 
     chromosomes = range(1, 23) if args.chromosomes is None else args.chromosomes
 
-    dataset_path = '../../data/prostate/hic_raw/primary_observed_ICE'
+    dataset_path = '../../data/prostate_cancer/hic_raw'
     if not os.path.exists(dataset_path):
         os.makedirs(dataset_path, exist_ok=True)
 
@@ -32,7 +32,7 @@ def main(args):
             chromosomes_target = [chr_source]
 
         for chr_target in chromosomes_target:
-            if os.path.exists(dataset_path + '/primary_observed_ICE_{}_{}_{}.npz'.format(chr_source, chr_target,
+            if os.path.exists(dataset_path + '/hic_raw_{}_{}_{}.npz'.format(chr_source, chr_target,
                                                                                          args.window)):
                 print('File already existing. Skip.')
                 continue
@@ -51,9 +51,9 @@ def main(args):
             values_chr = np.add.reduceat(values_chr, np.arange(0, values_chr.shape[1], args.window // args.resolution),
                                          axis=1)
             sps.save_npz(
-                dataset_path + '/primary_observed_ICE_{}_{}_{}.npz'.format(chr_source, chr_target, args.window),
+                dataset_path + '/hic_raw_{}_{}_{}.npz'.format(chr_source, chr_target, args.window),
                 sps.csr_matrix(values_chr))
-            print('Hi-C data saved in sparse format in', dataset_path + '/primary_observed_ICE_{}_{}_{}.npz'.format(chr_source, chr_target, args.window))
+            print('Hi-C data saved in sparse format in', dataset_path + '/hic_raw_{}_{}_{}.npz'.format(chr_source, chr_target, args.window))
 
 
 if __name__ == '__main__':

@@ -13,14 +13,17 @@ def main(args):
         os.mkdir(dataset_path)
 
     for i in chromosomes:
-        print('Chromosome ', i)
+        if not os.path.exists(dataset_path + '/hic_raw_{}_{}_{}.npz'.format(i, i, args.resolution)):
+            print('Hi-C for chromosome', i)
 
-        file_path = os.path.join(args.input, '{}.nor.chr{}.mat'.format(args.identifier, i))
-        contact_matrix = np.genfromtxt(file_path, delimiter='\t')
-        contact_matrix_sparse = sps.csr_matrix(contact_matrix)
+            file_path = os.path.join(args.input, '{}.nor.chr{}.mat'.format(args.identifier, i))
+            contact_matrix = np.genfromtxt(file_path, delimiter='\t')
+            contact_matrix_sparse = sps.csr_matrix(contact_matrix)
 
-        sps.save_npz(dataset_path + '/hic_raw_{}_{}_{}.npz'.format(i, i, args.resolution),
-                     contact_matrix_sparse)
+            sps.save_npz(dataset_path + '/hic_raw_{}_{}_{}.npz'.format(i, i, args.resolution),
+                         np.log1p(contact_matrix_sparse))
+        else:
+            print('Hi-C for chromosome', i, 'already computed. Skipped.')
     print('Hi-C data saved in sparse format in', dataset_path)
 
 

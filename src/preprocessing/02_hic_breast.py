@@ -8,7 +8,7 @@ import scipy.sparse as sps
 def main(args):
     chromosomes = range(1, 23) if args.chromosomes is None else args.chromosomes
 
-    dataset_path = '../../data/breast/primary_observed_ICE/hic_raw'
+    dataset_path = '../../data/breast_cancer/hic_raw'
     if not os.path.exists(dataset_path):
         os.mkdir(dataset_path)
 
@@ -18,7 +18,7 @@ def main(args):
         contact_matrix = np.genfromtxt(args.input.format(i), delimiter='\t')
         contact_matrix_sparse = sps.csr_matrix(contact_matrix)
 
-        sps.save_npz(dataset_path + '/primary_observed_ICE_{}_{}_{}.npz'.format(i, i, args.resolution),
+        sps.save_npz(dataset_path + '/hic_raw_{}_{}_{}.npz'.format(i, i, args.resolution),
                      contact_matrix_sparse)
     print('Hi-C data saved in sparse format in', dataset_path)
 

@@ -12,7 +12,7 @@ def main(args):
 
     chromosomes = range(1, 23) if args.chromosomes is None else args.chromosomes
 
-    dataset_path = '/home/varrone/Prj/gene-expression-chromatin/data/{}/hic_raw/'.format(args.dataset)
+    dataset_path = '../../data/{}/hic_raw/'.format(args.dataset)
     if not os.path.exists(dataset_path):
         os.makedirs(dataset_path, exist_ok=True)
 

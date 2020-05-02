@@ -79,3 +79,9 @@ The 05_results_comparison.py script generates the plot for comparing the perform
 With the _--embs_ parameter it is possible to select which type of models to compare by listing the name of the 
 results used to produce the prediction results. It's important replace the chromosome number with "{}" to compare runs over multiple chromosomes.<br>
 For example, to compare the topological measure method with node2vec, pass _--embs rf\_topological\_primary\_observed_ICE\_{}\_{}\_40000\_3.65\_avg\_l1 rf\_node2vec\_primary\_observed\_ICE\_{}\_{}\_40000\_3.59\_es16\_nw10\_wl80\_p1.0\_q1.0\_hadamard\_0.38_
+
+## Example script
+
+A script to automatically execute the whole pipeline for the single-chromosome and shared intra-chromosomal using the breast cancer dataset is provided through the *run_breast_cancer.sh* file.<br>
+Both the expresison and the Hi-C data are automatically downloaded, but the preprocessing of the Hi-C data requires the presence of the juicer tools jar available at https://github.com/aidenlab/juicer/wiki/Juicer-Tools-Quick-Start. The version used in the paper is *juicer_tools_1.13.02.jar*. To execute the pipeline using a different version it is sufficient to change the value of the JUICER_PATH variable.<br>
+WARNING: verify that the machine used has the resources required to execute the pipeline.

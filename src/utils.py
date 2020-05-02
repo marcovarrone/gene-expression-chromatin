@@ -1,22 +1,31 @@
 import os
 import numpy as np
 
-def intra_mask(shapes, nans=False):
+def intra_mask(shapes, nans=False, values=np.ones):
     mask = np.zeros(np.sum(shapes, axis=0))
     if nans:
         mask[:] = np.nan
 
     r, c = 0, 0
     for i, (rr, cc) in enumerate(shapes):
-        if nans:
-            values = np.zeros((rr,cc))
-        else:
-            values = np.ones((rr, cc))
-        mask[r:r + rr, c:c + cc] = values
+        mask[r:r + rr, c:c + cc] = values((rr, cc))
         r += rr
         c += cc
 
     return mask
+
+def block_matrix(arrs):
+    shapes = np.array([a.shape for a in arrs])
+    full = np.zeros(np.sum(shapes, axis=0))
+    full[:] = np.nan
+    r, c = 0, 0
+    for i, (rr, cc) in enumerate(shapes):
+        full[r:r + rr, c:c + cc] = arrs[i]
+        r += rr
+        c += cc
+
+    return full
+
 
 def set_gpu(active=False):
     if not active:

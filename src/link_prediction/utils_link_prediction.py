@@ -74,7 +74,7 @@ def evaluate(X_train, y_train, X_test, y_test, classifier, mask):
     return results
 
 
-def evaluate_embedding(X_train, y_train, classifier_name, verbose=1, clf_params={}, cv_splits=5, mask=None, X_test=None,
+def evaluate_embedding(X_train, y_train, classifier_name, verbose=True, clf_params={}, cv_splits=5, mask=None, X_test=None,
                        y_test=None):
     results = defaultdict(list)
     if X_test is None and y_test is None:
@@ -376,14 +376,14 @@ def build_dataset(args, edges, non_edges, n_nodes):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
     return X_train, X_test, y_train, y_test
 
-def link_prediction(args, X_train, y_train, X_test, y_test, filename):
+def link_prediction(args, X_train, y_train, X_test, y_test, filename, verbose=False):
     results = defaultdict(list)
     if args.test:
-        results = evaluate_embedding(X_train, y_train, args.classifier, verbose=1, clf_params={'n_estimators': 100},
+        results = evaluate_embedding(X_train, y_train, args.classifier, verbose=verbose, clf_params={'n_estimators': 100},
                                      X_test=X_test, y_test=y_test)
     else:
         for i in range(args.n_iter):
-            results_iter = evaluate_embedding(X_train, y_train, args.classifier, verbose=1,
+            results_iter = evaluate_embedding(X_train, y_train, args.classifier, verbose=verbose,
                                               clf_params={'n_estimators': 100}, cv_splits=args.cv_splits)
             for key in results_iter.keys():
                 results[key].extend(results_iter[key])
@@ -391,9 +391,8 @@ def link_prediction(args, X_train, y_train, X_test, y_test, filename):
     with open('../../results/{}/{}'.format(args.dataset, filename), 'wb') as file_save:
         pickle.dump(results, file_save)
 
-    print("Mean Accuracy:", np.mean(results['acc']), "- Mean ROC:", np.mean(results['roc']), "- Mean F1:",
-          np.mean(results['f1']),
-          "- Mean Precision:", np.mean(results['precision']), "- Mean Recall", np.mean(results['recall']))
+    print("Mean Accuracy: {:.3f} - Mean F1: {:.3f} - Mean Precision: {:.3f} - Mean Recall: {:.3f}".format(np.mean(results['acc']), np.mean(results['f1']), np.mean(results['precision']), np.mean(results['recall'])))
+    print('')
 
 def get_mask_intra(dataset):
     shapes = [np.load(

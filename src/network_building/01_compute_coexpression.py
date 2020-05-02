@@ -32,7 +32,7 @@ def main(args):
         if args.chr_src and args.chr_tgt:
             df_chr_src = df[df['Chromosome/scaffold name'] == chr_src]
             df_chr_tgt = df[df['Chromosome/scaffold name'] == chr_tgt]
-            print('Computing co-expression between chromosome', chr_src, 'and chromosome', chr_tgt)
+            #print('Computing co-expression between chromosome', chr_src, 'and chromosome', chr_tgt)
         else:
             df_chr_src = df
             df_chr_tgt = df
@@ -63,7 +63,7 @@ def main(args):
             np.save(data_folder + 'coexpression/coexpression_chr_{}_{}.npy'.format(chr_src, chr_tgt),
                     coexp)
     else:
-        print('Co-expression between chromosome', chr_src, 'and chromosome', chr_tgt, 'already computed. Skipped')
+        #print('Co-expression between chromosome', chr_src, 'and chromosome', chr_tgt, 'already computed. Skipped')
         if args.save_plot and not os.path.exists(
                 '../../plots/{}/coexpression/coexpression_chr_{}_{}.png'.format(args.dataset, chr_src, chr_tgt)):
             coexp = np.load(data_folder + 'coexpression/coexpression_chr_{}_{}.npy'.format(chr_src, chr_tgt))

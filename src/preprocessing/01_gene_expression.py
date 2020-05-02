@@ -8,8 +8,7 @@ def main(args):
     dataset_path = '../../data/{}'.format(args.dataset)
     if not os.path.exists(dataset_path + '/expression_raw.csv'):
         tcga = pd.read_csv(args.input, delimiter='\t')
-
-        print('Gene expression data loaded:', tcga.shape[0], 'genes and', tcga.shape[1], 'samples')
+        print('Gene expression data loaded:', tcga.shape[0], 'genes and', tcga.shape[1] - 1, 'samples')
 
         low_expression_genes = (tcga == 0).sum(axis=1) <= tcga.shape[1] * 0.2
 

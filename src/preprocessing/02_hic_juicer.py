@@ -16,6 +16,7 @@ def main(args):
     if not os.path.exists(dataset_path):
         os.makedirs(dataset_path, exist_ok=True)
 
+
     for i, chr_source in enumerate(chromosomes):
 
         if args.inter:
@@ -24,7 +25,7 @@ def main(args):
             chromosomes_target = [chr_source]
 
         for chr_target in chromosomes_target:
-            print('Chr.', chr_source, '- Chr.', chr_target)
+            print('Downloading interactions between chr.', chr_source, 'and chr.', chr_target)
             output_hic = 'hic_raw_{}_{}_{}.npz'.format(chr_source, chr_target, args.window)
             output_path = os.path.join(dataset_path, output_hic)
 
@@ -33,7 +34,7 @@ def main(args):
 
                 output_original = 'hic_raw_{}_{}_{}.txt'.format(chr_source, chr_target, args.resolution)
                 original_path = os.path.join(dataset_path, output_original)
-                os.system('java -jar /home/varrone/Repo/software/juicer_tools_1.13.02.jar ' +
+                os.system('java -jar {} '.format(args.juicer_path) +
                           'dump observed NONE {} '.format(args.input) +
                           '{} {} '.format(chr_source, chr_target) +
                           'BP {} '.format(args.resolution) +
@@ -73,9 +74,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--input', type=str, default='https://hicfiles.s3.amazonaws.com/hiseq/imr90/in-situ/combined.hic',
-                        help='Path of the original .hic file')
-    parser.add_argument('--dataset', type=str, default='lung_imr90')
+    parser.add_argument('--input', type=str, required=True, help='Link of the Hi-C data hosted on Juicer')
+    parser.add_argument('--juicer-path', type=str, required=True)
+    parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--resolution', type=int, default=10000,
                         help='Resolution of the Hi-C data.')
     parser.add_argument('--window', type=int, default=40000,

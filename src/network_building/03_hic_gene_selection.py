@@ -87,7 +87,7 @@ def main(args, hic_folder, rna_folder):
     hic_output_file = '{}_{}_{}_{}'.format(args.type, args.chr_src, args.chr_tgt,
                                                  args.resolution)
     if not os.path.exists(hic_folder + hic_output_file + '.npy') or args.force:
-        print(hic_output_file)
+        print('Select gene interactions between chr.', args.chr_src, 'and', args.chr_tgt)
 
         df_rna_src = pd.read_csv(
             rna_folder + 'expression_info_chr_{}.csv'.format(args.chr_src), index_col=0)
@@ -113,7 +113,7 @@ def main(args, hic_folder, rna_folder):
 
             np.save(hic_folder + hic_output_file + '.npy', contact_matrix)
     else:
-        print('Gene selection for chr.',args.chr_src,'already computed. Skipped')
+        print('Gene selection for chr.', args.chr_src, 'already computed. Skipped')
         if args.save_plot:
             contact_matrix = np.load(hic_folder + hic_output_file + '.npy')
 

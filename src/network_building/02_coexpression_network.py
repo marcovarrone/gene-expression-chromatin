@@ -39,7 +39,6 @@ def single_chromosome(args):
             raise ValueError('Either one parameter between --percentile and --threshold must be passed.')
 
         threshold = np.round(threshold, 2)
-        print('Treshold:', threshold)
 
         coexpression[coexpression < threshold] = 0
         coexpression[coexpression >= threshold] = 1

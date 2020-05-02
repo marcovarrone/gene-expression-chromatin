@@ -27,7 +27,7 @@ def single_chromosome(args):
         hic = np.load(
             '../../data/{}/hic/{}.npy'.format(args.dataset, hic_name))
 
-        print('Chromosome', args.chr_src)
+        print('Computing chromatin interaction network between chr.', args.chr_src, 'and chr.', args.chr_tgt)
 
         hics = [
             np.load('../../data/{}/hic/{}_{}_{}_{}.npy'.format(args.dataset, args.type, i, i,
@@ -43,12 +43,10 @@ def single_chromosome(args):
             # ToDo: give useful error text
             raise ValueError()
 
-        print('Threshold:', threshold)
-
         hic[hic <= threshold] = 0
         hic[hic > 0] = 1
 
-        print('Sparsity', (np.nansum(hic)*2) / (hic.shape[0] * hic.shape[1]))
+        print('N. edges after thresholding', (hic == 1).sum())
 
         save_disconnected_nodes(hic, args.dataset, filename)
 

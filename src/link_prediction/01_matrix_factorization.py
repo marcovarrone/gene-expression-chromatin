@@ -1,5 +1,8 @@
 import argparse
 import os
+import warnings
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from utils import set_n_threads
 from utils_link_prediction import generate_embedding
@@ -38,4 +41,4 @@ if __name__ == '__main__':
 
         generate_embedding(args, emb_path, interactions_path, command)
     else:
-        print(print('Embeddings already computed for {}. Skipped.'.format('../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method.lower(), emb_path))))
+        print('Embeddings already computed for {}. Skipped.'.format('../../data/{}/embeddings/{}/{}.npy'.format(args.dataset, args.method.lower(), emb_path)))

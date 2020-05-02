@@ -20,12 +20,12 @@ def main(args):
     args, filename = setup_filenames_and_folders(args, args.chr_src)
 
     if not os.path.exists('../../results/{}/{}'.format(args.dataset, filename)) or args.force:
+        print('Prediction of co-expression links from chr. {} to {} using {} embeddings.'.format(args.chr_src, args.chr_tgt, args.method))
         coexpression = load_coexpression(args, args.chromatin_network_name, '{}_{}'.format(args.chr_src, args.chr_tgt))
 
         edges, non_edges = get_edges(coexpression)
 
         X_train, X_test, y_train, y_test = build_dataset(args, edges, non_edges, coexpression.shape[0])
-        print(X_train.shape)
 
         link_prediction(args, X_train, y_train, X_test, y_test, filename)
     else:

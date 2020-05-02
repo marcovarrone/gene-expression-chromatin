@@ -17,6 +17,7 @@ def main(args):
     non_edges = None
     offset = 0
     if not os.path.exists('../../results/{}/{}'.format(args.dataset, filename)) or args.force:
+        print('Prediction of all the intra-chromosomal co-expression links using {} embeddings.'.format(args.method))
         for i in range(1, 23):
             chromatin_network_chr_name = '{}_{}_{}_{}_{}'.format(args.type, i, i,
                                                                        args.bin_size,
@@ -53,7 +54,7 @@ def main(args):
         X_train, X_test, y_train, y_test = build_dataset(args, edges, non_edges, offset)
         print(X_train.shape)
 
-        link_prediction(args, X_train, y_train, X_test, y_test, filename)
+        link_prediction(args, X_train, y_train, X_test, y_test, filename, verbose=True)
     else:
         # ToDo: load results and print them
         print('Result already computed for {}. Skipped.'.format(filename))
@@ -79,6 +80,7 @@ if __name__ == '__main__':
     parser.add_argument('--emb-size', type=int, default=16)
     parser.add_argument('--force', default=False, action='store_true')
     parser.add_argument('--test', default=False, action='store_true')
+    parser.add_argument('--verbose', default=False, action='store_true')
 
     # Node2vec params
     parser.add_argument('--num-walks', type=int, default=10)

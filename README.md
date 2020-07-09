@@ -82,6 +82,21 @@ For example, to compare the topological measure method with node2vec, pass _--em
 
 ## Example script
 
+### Full pipeline
 A script to automatically execute the whole pipeline for the single-chromosome and shared intra-chromosomal using the breast cancer dataset is provided through the *run_breast_cancer.sh* file.<br>
-Both the expresison and the Hi-C data are automatically downloaded, but the preprocessing of the Hi-C data requires the presence of the juicer tools jar available at https://github.com/aidenlab/juicer/wiki/Juicer-Tools-Quick-Start. The version used in the paper is *juicer_tools_1.13.02.jar*. To execute the pipeline using a different version it is sufficient to change the value of the JUICER_PATH variable.<br>
+Both the expression and the Hi-C data are automatically downloaded, but the preprocessing of the Hi-C data requires the presence of the juicer tools jar available at https://github.com/aidenlab/juicer/wiki/Juicer-Tools-Quick-Start. The version used in the paper is *juicer_tools_1.13.02.jar*. To execute the pipeline using a different version it is sufficient to change the value of the JUICER_PATH variable.<br>
 WARNING: verify that the machine used has the resources required to execute the pipeline.
+
+### Building a coexpression network
+An example script for generating a coexpression network from the initial RNA-seq data for chromosome 1 and saving the plot of both the coexpression matrix and the adjacency matrix of the coexpression network is provided through the *run_coexpression_breast_cancer.sh* file.<br><br>
+By changing the value of the COEXP_PERCENTILE variable it is possible to select the threshold to consider when a pair of genes is coexpressed ror not.<br><br>
+Since the threshold percentile is compute across all the chromosome. The method must compute the coexpression matrices for all the chromosomes first.
+
+### Building a chromatin network
+An example script for generating the chromatin network from the Hi-C data for chromosome 1 and saving the plot of both the Hi-C matrix and the adjacency matrix of the chromatin network is provided through the *run_chromatin_breast_cancer_sh* file.<br><br>
+It is possible to change the resolution of the Hi-C matrix to extract the links from by changing the value of the RESOLUTION variable (IMPORTANT: choose a value for ORIGINAL_RESOLUTION that is the highest among the options avaiable from juicer that are lower or equal to RESOLUTION). Similarly to the coexpression case you can change the thresholding value thorugh the HIC_PERCENTILE variable.<br><br>
+Since the threshold percentile is compute across all the chromosome. The method must compute the Hi-C matrices for all the chromosomes first.
+
+### Predicting the coexpression using the node2vec embeddings
+An example script for predicting the coexpression of chromosome 1 using node embedding extracted with the node2vec algorithm and combined into edge embeddings using the hadamard operator is provieded through the *run_node2vec_chr1.sh* file.<br><br>
+The script contains all the variable required to control the characteristics of the networks to be used, the hyperaparameters of node2vec and the link prediction parameters.

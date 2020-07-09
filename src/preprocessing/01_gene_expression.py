@@ -45,7 +45,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--input', type=str, default='/home/varrone/Data/GTEx/datasets_tpm/breast-mammary_tissue.tsv',
+    parser.add_argument('--input', type=str, required=True,
                         help='Gene expression input file path downloaded from Xena Browser')
     parser.add_argument('--dataset', type=str, default='breast_normal',
                         help='Name that will be used to identify the dataset')

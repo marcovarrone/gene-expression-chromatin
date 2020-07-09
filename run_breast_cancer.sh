@@ -1,5 +1,5 @@
 JUICER_PATH=../../juicer_tools_1.13.02.jar
-DATASET=breast_cancer_final
+DATASET=breast_cancer
 EXPRESSION_PATH=../../data/${DATASET}/HiSeqV2
 HIC_PATH=https://hicfiles.s3.amazonaws.com/external/barutcu/MCF-7.hic
 ORIGINAL_RESOLUTION=10000

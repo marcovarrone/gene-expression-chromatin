@@ -26,9 +26,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--expression-path', type=str, default='/home/varrone/Data/GTEx/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct')
-    parser.add_argument('--annotations-path', type=str, default='/home/varrone/Data/GTEx/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt')
-    parser.add_argument('--output-path', type=str, default='/home/varrone/Data/GTEx/datasets_tpm')
+    parser.add_argument('--expression-path', type=str, required=True)
+    parser.add_argument('--annotations-path', type=str, required=True)
+    parser.add_argument('--output-path', type=str, required=True)
     args = parser.parse_args()
 
     main(args)

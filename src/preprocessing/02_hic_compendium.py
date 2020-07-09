@@ -30,7 +30,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--input', type=str, default='/home/varrone/Data/GSE87112/contact_maps/HiCNorm/primary_cohort',
+    parser.add_argument('--input', type=str, required=True,
                         help='Path of the Hi-C matrices in .matrix format with "{}" instead of the number of the chromosome, e.g. ../../data/hic_data_chr{}.matrix')
     parser.add_argument('--identifier', default='LG1')
     parser.add_argument('--dataset', default='lung')

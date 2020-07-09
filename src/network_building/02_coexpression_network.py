@@ -126,7 +126,6 @@ if __name__ == '__main__':
     parser.add_argument('--save-plot', default=False, action='store_true')
     parser.add_argument('--save-matrix', default=False, action='store_true')
     parser.add_argument('--force', default=False, action='store_true')
-    parser.add_argument('--weight', type=float, default=0.1)
     args = parser.parse_args()
 
     if args.chr_src and args.chr_tgt:
